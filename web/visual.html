@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Цифровой дресс-код</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    color: #fff;
+    font-family: sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  h1 { margin-top: 10px; }
+
+  #container {
+    position: relative;
+    width: 640px;
+    height: 480px;
+    margin-top: 10px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 15px rgba(0,0,0,0.4);
+  }
+
+  video, canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+
+  #controls {
+    margin-top: 15px;
+    text-align: center;
+  }
+
+  input, select, button {
+    margin: 4px;
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: none;
+    outline: none;
+  }
+
+  button {
+    background-color: #0052CC;
+    color: white;
+    cursor: pointer;
+  }
+
+  #previewContainer {
+    margin-top: 10px;
+    display: none;
+  }
+
+  #previewContainer img {
+    max-width: 320px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.4);
+  }
+
+  /* Индикатор FPS */
+  #fpsDisplay {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 14px;
+    color: #00ff88;
+    box-shadow: 0 0 5px rgba(0,255,136,0.4);
+  }
+
+  /* Панель данных сотрудника */
+  #employeePanel {
+    position: fixed;
+    right: -360px;
+    top: 0;
+    width: 340px;
+    height: 100%;
+    background: #222;
+    box-shadow: -3px 0 10px rgba(0,0,0,0.4);
+    padding: 20px;
+    transition: right 0.3s;
+    overflow-y: auto;
+  }
+
+  #employeePanel.open {
+    right: 0;
+  }
+
+  #employeePanel h2 {
+    margin-top: 0;
+    color: #00B8D9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  #backBtn {
+    background: none;
+    border: none;
+    color: #00B8D9;
+    font-size: 20px;
+    cursor: pointer;
+  }
+
+  #employeeBtn {
+    position: fixed;
+    top: 10px;
+    right: 60px;
+    background: #00B8D9;
+    color: black;
+    border: none;
+    padding: 10px;
+    border-radius: 50%;
+    font-size: 18px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+  <h1>Цифровой дресс-код</h1>
+
+  <!-- Поле FPS -->
+  <div id="fpsDisplay">FPS: —</div>
+
+  <button id="employeeBtn">👤</button>
+
+  <div id="controls">
+    <label>Фон:</label>
+    <select id="backgroundSelect">
+      <option value="../TaskData/Подложки DION/1920x1080.png">Корпоративный фон 1</option>
+      <option value="../TaskData/Подложки DION/1920x1080_2.png">Корпоративный фон 2</option>
+    </select>
+    <button id="previewBtn">Предпросмотр</button>
+    <button id="applyBtn">Применить</button>
+  </div>
+
+  <div id="previewContainer">
+    <h3>Предпросмотр фона:</h3>
+    <img id="previewImage" src="" alt="Предпросмотр">
+  </div>
+
+  <div id="container">
+    <video id="camera" autoplay playsinline></video>
+    <canvas id="output"></canvas>
+  </div>
+
+  <!-- Панель сотрудника -->
+  <div id="employeePanel">
+    <h2>
+      Данные сотрудника
+      <button id="backBtn" title="Свернуть панель">←</button>
+    </h2>
+
+    <label>ФИО:</label><br><input id="full_name" placeholder="Иванов Сергей Петрович"><br>
+    <label>Должность:</label><br><input id="position" placeholder="Ведущий инженер"><br>
+    <label>Компания:</label><br><input id="company" placeholder="ООО «Рога и Копыта»"><br>
+    <label>Отдел:</label><br><input id="department" placeholder="Департамент ИИ"><br>
+    <label>Локация:</label><br><input id="office_location" placeholder="Новосибирск, технопарк"><br>
+    <label>Email:</label><br><input id="email" placeholder="example@corp.ru"><br>
+    <label>Telegram:</label><br><input id="telegram" placeholder="@username"><br>
+    <label>Слоган:</label><br><input id="slogan" placeholder="Инновации в каждый кадр"><br>
+    <label>Уровень приватности:</label><br>
+    <select id="privacy_level">
+      <option value="low">low</option>
+      <option value="medium" selected>medium</option>
+      <option value="high">high</option>
+    </select><br><br>
+    <button id="saveEmployee">Сохранить</button>
+  </div>
+
+  <script>
+  // === Класс сотрудника ===
+  class Employee {
+    constructor() {
+      this.employee = {
+        full_name: '',
+        position: '',
+        company: '',
+        department: '',
+        office_location: '',
+        contact: { email: '', telegram: '' },
+        branding: { logo_url: '', corporate_colors: { primary: '#0052CC', secondary: '#00B8D9' }, slogan: '' },
+        privacy_level: 'medium'
+      };
+    }
+
+    setFullName(v) { this.employee.full_name = v; }
+    setPosition(v) { this.employee.position = v; }
+    setCompany(v) { this.employee.company = v; }
+    setDepartment(v) { this.employee.department = v; }
+    setOfficeLocation(v) { this.employee.office_location = v; }
+    setEmail(v) { this.employee.contact.email = v; }
+    setTelegram(v) { this.employee.contact.telegram = v; }
+    setSlogan(v) { this.employee.branding.slogan = v; }
+    setPrivacy(v) { this.employee.privacy_level = v; }
+
+    save_to_json() {
+      const data = JSON.stringify({ employee: this.employee }, null, 2);
+      localStorage.setItem('employee_data', data);
+      alert('Данные сохранены!');
+    }
+  }
+
+  // === Основной UI ===
+  class DigitalDressCodeUI {
+    constructor() {
+      this.video = document.getElementById('camera');
+      this.canvas = document.getElementById('output');
+      this.ctx = this.canvas.getContext('2d');
+      this.bgSelect = document.getElementById('backgroundSelect');
+      this.background = new Image();
+      this.background.src = this.bgSelect.value;
+
+      this.employee = new Employee();
+      this.lastTime = performance.now();
+      this.fps = 0;
+
+      this.fpsDisplay = document.getElementById('fpsDisplay');
+
+      this.initCamera();
+      this.loop();
+
+      // UI элементы
+      this.bgSelect.addEventListener('change', () => this.previewBackground(this.bgSelect.value));
+      document.getElementById('previewBtn').addEventListener('click', () => this.previewBackground(this.bgSelect.value));
+      document.getElementById('applyBtn').addEventListener('click', () => this.applyBackground());
+
+      // Панель сотрудника
+      const panel = document.getElementById('employeePanel');
+      const btn = document.getElementById('employeeBtn');
+      const back = document.getElementById('backBtn');
+
+      btn.addEventListener('click', () => panel.classList.add('open'));
+      back.addEventListener('click', () => panel.classList.remove('open'));
+
+      document.getElementById('saveEmployee').addEventListener('click', () => {
+        this.collectEmployeeData();
+        this.employee.save_to_json();
+      });
+    }
+
+    async initCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      this.video.srcObject = stream;
+    }
+
+    previewBackground(path) {
+      const img = document.getElementById('previewImage');
+      img.src = path;
+      document.getElementById('previewContainer').style.display = 'block';
+    }
+
+    applyBackground() {
+      this.background.src = this.bgSelect.value;
+      document.getElementById('previewContainer').style.display = 'none';
+    }
+
+    collectEmployeeData() {
+      this.employee.setFullName(document.getElementById('full_name').value);
+      this.employee.setPosition(document.getElementById('position').value);
+      this.employee.setCompany(document.getElementById('company').value);
+      this.employee.setDepartment(document.getElementById('department').value);
+      this.employee.setOfficeLocation(document.getElementById('office_location').value);
+      this.employee.setEmail(document.getElementById('email').value);
+      this.employee.setTelegram(document.getElementById('telegram').value);
+      this.employee.setSlogan(document.getElementById('slogan').value);
+      this.employee.setPrivacy(document.getElementById('privacy_level').value);
+    }
+
+    drawFrame() {
+      if (this.video.readyState < 2) return;
+
+      const { videoWidth: w, videoHeight: h } = this.video;
+      this.canvas.width = w;
+      this.canvas.height = h;
+
+      const now = performance.now();
+      this.fps = 1000 / (now - this.lastTime);
+      this.lastTime = now;
+
+      const ctx = this.ctx;
+      ctx.drawImage(this.background, 0, 0, w, h);
+      ctx.drawImage(this.video, 0, 0, w, h);
+
+      // обновляем поле FPS
+      this.fpsDisplay.textContent = `FPS: ${this.fps.toFixed(1)}`;
+    }
+
+    loop() {
+      this.drawFrame();
+      requestAnimationFrame(() => this.loop());
+    }
+  }
+
+  const app = new DigitalDressCodeUI();
+  </script>
+</body>
+</html>
