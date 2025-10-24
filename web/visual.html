@@ -54,15 +54,27 @@
   }
 
   #previewContainer {
-    margin-top: 10px;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
     display: none;
-  }
-
-  #previewContainer img {
-    max-width: 320px;
+    background: rgba(0,0,0,0.8);
+    padding: 10px;
     border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.4);
-  }
+    z-index: 1000;
+}
+
+#previewContainer h3 {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+    text-align: center;
+}
+
+#previewContainer img {
+    max-width: 200px;
+    border-radius: 5px;
+    display: block;
+}
 
   /* Индикатор FPS */
   #fpsDisplay {
@@ -138,8 +150,8 @@
   <div id="controls">
     <label>Фон:</label>
     <select id="backgroundSelect">
-      <option value="../TaskData/Подложки DION/1920х1080.png">Корпоративный фон 1</option>
-      <option value="../TaskData/Подложки DION/1920х1080_2.png">Корпоративный фон 2</option>
+      <option value="Подложки DION/1920х1080.png">Корпоративный фон 1</option>
+      <option value="Подложки DION/1920х1080_2.png">Корпоративный фон 2</option>
     </select>
     <button id="previewBtn">Предпросмотр</button>
     <button id="applyBtn">Применить</button>
@@ -178,7 +190,7 @@
     </select><br><br>
     <button id="saveEmployee">Сохранить</button>
   </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script> -->
   <script src="script.js"></script>
   <script src="background_generator.js" defer></script>
 </body>

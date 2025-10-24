@@ -62,10 +62,14 @@ class DigitalDressCodeUI {
         btn.addEventListener('click', () => panel.classList.add('open'));
         back.addEventListener('click', () => panel.classList.remove('open'));
 
+        // Исправлено: привязка контекста
         document.getElementById('saveEmployee').addEventListener('click', () => {
             this.collectEmployeeData();
             this.employee.save_to_json();
         });
+
+        // Загружаем сохранённые данные при инициализации
+        this.loadEmployeeData();
     }
 
     async initCamera() {
@@ -104,9 +108,32 @@ class DigitalDressCodeUI {
         this.employee.setOfficeLocation(document.getElementById('office_location').value);
         this.employee.setEmail(document.getElementById('email').value);
         this.employee.setTelegram(document.getElementById('telegram').value);
-        this.employee.setLogoUrl(document.getElementById('logo_url').value);
+        // Убрано setLogoUrl - этого метода нет в классе
         this.employee.setSlogan(document.getElementById('slogan').value);
         this.employee.setPrivacy(document.getElementById('privacy_level').value);
+    }
+
+    // Новый метод для загрузки сохранённых данных
+    loadEmployeeData() {
+        const saved = localStorage.getItem('employee_data');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                const emp = data.employee;
+                
+                document.getElementById('full_name').value = emp.full_name || '';
+                document.getElementById('position').value = emp.position || '';
+                document.getElementById('company').value = emp.company || '';
+                document.getElementById('department').value = emp.department || '';
+                document.getElementById('office_location').value = emp.office_location || '';
+                document.getElementById('email').value = emp.contact?.email || '';
+                document.getElementById('telegram').value = emp.contact?.telegram || '';
+                document.getElementById('slogan').value = emp.branding?.slogan || '';
+                document.getElementById('privacy_level').value = emp.privacy_level || 'medium';
+            } catch (e) {
+                console.error('Ошибка загрузки данных:', e);
+            }
+        }
     }
 
     drawFrame() {
@@ -133,5 +160,6 @@ class DigitalDressCodeUI {
         requestAnimationFrame(() => this.loop());
     }
 }
+
 const app = new DigitalDressCodeUI();
 window.employeeInstance = app.employee;
