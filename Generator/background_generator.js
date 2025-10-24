@@ -38,14 +38,11 @@ function chooseTextColor(bgHex) {
 async function generateBackground(baseBackgroundPath) {
     // Получаем данные сотрудника из глобальной переменной
     const employee = window.employeeInstance;
-    if (!employee || !employee.getHighInfo) {
-        console.error('window.employeeInstance не определён или некорректен');
+    if (!employee) {
+        console.error('window.employeeInstance не определён');
         return null;
     }
-    const info = employee.getHighInfo();
-    if (!info.full_name || !info.position) {
-        console.warn('Не все данные сотрудника заполнены, фон может быть неполным');
-    }
+    const info = employee.employee;
     
     // Создаём canvas
     const WIDTH = 1920, HEIGHT = 1080;
@@ -69,7 +66,7 @@ async function generateBackground(baseBackgroundPath) {
         return null;
     }
 
-    // Градиентный оверлей
+    // Градиентный оверлей (всегда)
     const primary = hexToRgb(info.branding.corporate_colors.primary);
     const secondary = hexToRgb(info.branding.corporate_colors.secondary);
     for (let y = 0; y < HEIGHT; y++) {
@@ -81,7 +78,7 @@ async function generateBackground(baseBackgroundPath) {
         ctx.fillRect(0, y, WIDTH, 1);
     }
 
-    // Логотип
+    // Логотип (всегда, если URL)
     if (info.branding.logo_url) {
         try {
             const logo = new Image();
@@ -201,8 +198,9 @@ async function generateBackground(baseBackgroundPath) {
     }
 
     // === ОСНОВНАЯ ЛОГИКА РАСПОЛОЖЕНИЯ ===
+    // Low и выше: имя, должность
     const positionLines = splitText(info.position, 500, 40);
-    const leftLines = [...positionLines, info.full_name].filter(line => line); // Фильтр пустых
+    const leftLines = [...positionLines, info.full_name].filter(line => line);
     if (leftLines.length > 0) {
         const leftBlockHeight = drawTextWithBox(leftLines, 50, HEIGHT - 200, {
             vPad: 12,
@@ -212,6 +210,7 @@ async function generateBackground(baseBackgroundPath) {
         drawTextWithBox(leftLines, 50, leftStartY, { vPad: 12, lineSpacing: 5 });
     }
 
+    // Medium и выше: компания, отдел, локация
     if (['medium', 'high'].includes(info.privacy_level)) {
         const rightLines = [info.company, info.department, info.office_location].filter(Boolean);
         if (rightLines.length > 0) {
@@ -224,6 +223,7 @@ async function generateBackground(baseBackgroundPath) {
         }
     }
 
+    // High: контакты (QR)
     if (info.privacy_level === 'high') {
         const qrSize = 128;
         const qrPadding = 20;
@@ -259,6 +259,7 @@ async function generateBackground(baseBackgroundPath) {
         }
     }
 
+    // Слоган (всегда, если есть)
     if (info.branding.slogan) {
         drawTextWithBox(info.branding.slogan, 0, 50, {
             fontSize: 30,
