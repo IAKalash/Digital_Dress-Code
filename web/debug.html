@@ -102,12 +102,12 @@
         // Функция для создания QR-кода с использованием Promise
         function createQRCode(data, size) {
             return new Promise((resolve, reject) => {
-                const qrCanvas = document.createElement('canvas');
-                qrCanvas.width = size;
-                qrCanvas.height = size;
-                
                 try {
-                    const qr = new QRCode(qrCanvas, {
+                    // Создаем контейнер для QR-кода
+                    const container = document.createElement('div');
+                    
+                    // Создаем QR-код в контейнере
+                    const qr = new QRCode(container, {
                         text: data,
                         width: size,
                         height: size,
@@ -118,7 +118,24 @@
                     
                     // Ждем, пока QR-код будет сгенерирован
                     setTimeout(() => {
-                        resolve(qrCanvas);
+                        // Получаем изображение из контейнера
+                        const img = container.querySelector('img');
+                        const canvas = container.querySelector('canvas');
+                        
+                        if (canvas) {
+                            // Если есть canvas, используем его
+                            resolve(canvas);
+                        } else if (img) {
+                            // Если есть img, создаем canvas и рисуем изображение
+                            const qrCanvas = document.createElement('canvas');
+                            qrCanvas.width = size;
+                            qrCanvas.height = size;
+                            const ctx = qrCanvas.getContext('2d');
+                            ctx.drawImage(img, 0, 0, size, size);
+                            resolve(qrCanvas);
+                        } else {
+                            reject(new Error('Не удалось сгенерировать QR-код'));
+                        }
                     }, 100);
                 } catch (err) {
                     reject(err);
