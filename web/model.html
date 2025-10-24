@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MediaPipe — Firefox (РАБОЧАЯ ВЕРСИЯ)</title>
+  <style>
+    body { margin: 0; background: #000; font-family: Arial, sans-serif; text-align: center; color: white; }
+    .container { position: relative; max-width: 640px; margin: 0 auto; }
+    canvas { width: 100%; border: 3px solid #0f0; border-radius: 12px; display: block; }
+    button { margin: 20px; padding: 12px 30px; font-size: 18px; background: #0d6efd; color: white; border: none; border-radius: 8px; cursor: pointer; }
+    button:disabled { background: #555; cursor: not-allowed; }
+    .status { font-weight: bold; color: #0f0; margin: 10px; padding: 10px; }
+    .fps { position: absolute; top: 10px; right: 10px; background: #0008; padding: 5px 10px; border-radius: 5px; font: 16px monospace; }
+    .error { color: #f00; }
+  </style>
+</head>
+<body>
+  <h1>Firefox — СЕГМЕНТАЦИЯ (ИСПРАВЛЕННАЯ)</h1>
+  <div class="container">
+    <div class="fps" id="fps">FPS: 0</div>
+    <canvas id="output"></canvas>
+    <canvas id="mask" style="display: none;"></canvas>
+  </div>
+  <button id="start">ЗАПУСТИТЬ КАМЕРУ</button>
+  <div class="status" id="status">Нажмите кнопку для запуска</div>
+
+  <!-- Загружаем MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+  <script>
+    const outputCanvas = document.getElementById('output');
+    const maskCanvas = document.getElementById('mask');
+    const ctx = outputCanvas.getContext('2d');
+    const maskCtx = maskCanvas.getContext('2d');
+    const startButton = document.getElementById('start');
+    const statusDiv = document.getElementById('status');
+    const fpsDiv = document.getElementById('fps');
+
+    let selfieSegmentation = null;
+    let camera = null;
+    let animationId = null;
+    let fps = 0;
+    let lastTimestamp = 0;
+    let frameCount = 0;
+
+    // Фон для демонстрации сегментации
+    const backgroundColors = ['#113', '#300', '#030', '#330'];
+    let currentBg = 0;
+
+    async function initializeSelfieSegmentation() {
+      statusDiv.textContent = 'Инициализация MediaPipe...';
+      
+      try {
+        selfieSegmentation = new SelfieSegmentation({
+          locateFile: (file) => {
+            console.log('Loading file:', file);
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
+          }
+        });
+
+        selfieSegmentation.setOptions({
+          modelSelection: 1, // 1 - общая модель, 0 - ландшафтная
+          selfieMode: true
+        });
+
+        selfieSegmentation.onResults(onResults);
+        
+        statusDiv.textContent = 'MediaPipe готов! Запускаем камеру...';
+        return true;
+      } catch (error) {
+        console.error('Ошибка инициализации MediaPipe:', error);
+        statusDiv.textContent = 'Ошибка MediaPipe: ' + error.message;
+        statusDiv.className = 'status error';
+        return false;
+      }
+    }
+
+    async function startCamera() {
+      statusDiv.textContent = 'Запрос доступа к камере...';
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            frameRate: { ideal: 30 }
+          },
+          audio: false
+        });
+
+        const videoElement = document.createElement('video');
+        videoElement.srcObject = stream;
+        videoElement.playsInline = true;
+        
+        await new Promise((resolve) => {
+          videoElement.onloadedmetadata = () => {
+            videoElement.play().then(resolve);
+          };
+        });
+
+        // Устанавливаем размеры canvas
+        outputCanvas.width = videoElement.videoWidth;
+        outputCanvas.height = videoElement.videoHeight;
+        maskCanvas.width = videoElement.videoWidth;
+        maskCanvas.height = videoElement.videoHeight;
+
+        // Запускаем камеру MediaPipe
+        camera = new Camera(videoElement, {
+          onFrame: async () => {
+            if (selfieSegmentation) {
+              await selfieSegmentation.send({ image: videoElement });
+            }
+          },
+          width: videoElement.videoWidth,
+          height: videoElement.videoHeight
+        });
+
+        await camera.start();
+        statusDiv.textContent = 'Камера запущена! Сегментация активна.';
+        startButton.textContent = 'СМЕНИТЬ ФОН';
+        startButton.disabled = false;
+        
+        // Запускаем подсчет FPS
+        requestAnimationFrame(updateFPS);
+        
+        return true;
+      } catch (error) {
+        console.error('Ошибка камеры:', error);
+        statusDiv.textContent = 'Ошибка камеры: ' + error.message;
+        statusDiv.className = 'status error';
+        return false;
+      }
+    }
+
+    function onResults(results) {
+      if (!results || !results.segmentationMask) {
+        console.warn('Нет результатов сегментации');
+        return;
+      }
+
+      const width = outputCanvas.width;
+      const height = outputCanvas.height;
+
+      // 1. Очищаем основной canvas
+      ctx.clearRect(0, 0, width, height);
+
+      // 2. Рисуем новый фон
+      ctx.fillStyle = backgroundColors[currentBg];
+      ctx.fillRect(0, 0, width, height);
+
+      // 3. Рисуем маску на скрытый canvas (для обработки)
+      maskCanvas.width = width;
+      maskCanvas.height = height;
+      maskCtx.drawImage(results.segmentationMask, 0, 0, width, height);
+
+      // 4. СГЛАЖИВАЕМ МАСКУ (убираем рваные края)
+      maskCtx.globalCompositeOperation = 'copy';
+      maskCtx.filter = 'blur(4px)'; // Мягкое сглаживание краёв
+      maskCtx.drawImage(maskCanvas, 0, 0, width, height);
+      maskCtx.filter = 'none';
+
+      // 5. Рисуем оригинальное изображение
+      ctx.drawImage(results.image, 0, 0, width, height);
+
+      // 6. Применяем сглаженную маску
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.drawImage(maskCanvas, 0, 0, width, height);
+      ctx.globalCompositeOperation = 'source-over';
+
+      frameCount++;
+    }
+
+    function updateFPS(timestamp) {
+      if (timestamp - lastTimestamp >= 1000) {
+        fps = frameCount;
+        fpsDiv.textContent = `FPS: ${fps}`;
+        frameCount = 0;
+        lastTimestamp = timestamp;
+      }
+      animationId = requestAnimationFrame(updateFPS);
+    }
+
+    function changeBackground() {
+      currentBg = (currentBg + 1) % backgroundColors.length;
+    }
+
+    async function initializeApp() {
+      startButton.disabled = true;
+      
+      const mediapipeReady = await initializeSelfieSegmentation();
+      if (!mediapipeReady) {
+        startButton.disabled = false;
+        return;
+      }
+      
+      const cameraReady = await startCamera();
+      if (!cameraReady) {
+        startButton.disabled = false;
+        return;
+      }
+    }
+
+    // Обработчики событий
+    startButton.addEventListener('click', function() {
+      if (camera) {
+        changeBackground();
+      } else {
+        initializeApp();
+      }
+    });
+
+    // Чистка при закрытии страницы
+    window.addEventListener('beforeunload', () => {
+      if (camera) {
+        camera.stop();
+      }
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
+    });
+
+    // Информация о браузере
+    console.log('Браузер:', navigator.userAgent);
+    console.log('MediaPipe SelfieSegmentation доступен:', typeof SelfieSegmentation !== 'undefined');
+    console.log('Camera доступен:', typeof Camera !== 'undefined');
+  </script>
+</body>
+</html>
