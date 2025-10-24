@@ -2,6 +2,7 @@ import io
 from PIL import Image, ImageDraw, ImageFont
 import qrcode
 import os
+from json_gen import Employee  # Импорт класса Employee
 
 # Вспомогательные функции для контраста (WCAG)
 def hex_to_rgb(hex_color):
@@ -61,11 +62,19 @@ def split_text(text, max_width, font, draw):
 
 # Основная функция генератора
 def generate_background(employee_data, base_background_path, output_path=None):
+    # Проверяем тип employee_data и преобразуем при необходимости
+    if isinstance(employee_data, Employee):
+        # Используем методы класса Employee для получения данных
+        employee_info = employee_data.get_high_info()  # Получаем все данные
+    else:
+        # Для обратной совместимости с dict
+        employee_info = employee_data
+    
     base_img = Image.open(base_background_path).resize((1920, 1080)).convert('RGBA')
     
     # Градиент оверлей
-    primary = hex_to_rgb(employee_data['branding']['corporate_colors']['primary'])
-    secondary = hex_to_rgb(employee_data['branding']['corporate_colors']['secondary'])
+    primary = hex_to_rgb(employee_info['branding']['corporate_colors']['primary'])
+    secondary = hex_to_rgb(employee_info['branding']['corporate_colors']['secondary'])
     overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
     overlay_draw = ImageDraw.Draw(overlay)
     for y in range(base_img.height):
@@ -78,7 +87,7 @@ def generate_background(employee_data, base_background_path, output_path=None):
     
     # Логотип
     try:
-        logo = Image.open(employee_data['branding']['logo_url']).convert('RGBA').resize((125, 125))
+        logo = Image.open(employee_info['branding']['logo_url']).convert('RGBA').resize((125, 125))
         base_img.paste(logo, (50, 50), logo)
     except:
         pass
@@ -89,14 +98,14 @@ def generate_background(employee_data, base_background_path, output_path=None):
     small_font = load_best_font(25)
     
     # Цвета
-    primary_color = employee_data['branding']['corporate_colors']['primary']
+    primary_color = employee_info['branding']['corporate_colors']['primary']
     text_color_rgb = hex_to_rgb(choose_text_color(primary_color))
     box_colors = {
         'primary': hex_to_rgb(primary_color) + (120,),
-        'secondary': hex_to_rgb(employee_data['branding']['corporate_colors']['secondary']) + (100,)
+        'secondary': hex_to_rgb(employee_info['branding']['corporate_colors']['secondary']) + (100,)
     }
     
-    privacy = employee_data['privacy_level']
+    privacy = employee_info['privacy_level']
     shadow = (0, 0, 0, 128) if text_color_rgb[0] > 128 else (255, 255, 255, 128)
 
     # Функция для одиночного текста
@@ -162,8 +171,8 @@ def generate_background(employee_data, base_background_path, output_path=None):
         return total_h + 2 * v_pad
 
     # Левая нижняя часть: должность и ФИО в одной рамке
-    position_lines = split_text(employee_data['position'], 500, font, draw)
-    all_left_lines = position_lines + [employee_data['full_name']]
+    position_lines = split_text(employee_info['position'], 500, font, draw)
+    all_left_lines = position_lines + [employee_info['full_name']]
     
     # Вычисляем высоту всего блока
     bboxes = [draw.textbbox((0, 0), line, font=font) for line in all_left_lines]
@@ -180,9 +189,9 @@ def generate_background(employee_data, base_background_path, output_path=None):
     # Правая верхняя часть: компания, отдел, локация в одной рамке
     if privacy in ['medium', 'high']:
         right_lines = [
-            employee_data['company'],
-            employee_data['department'], 
-            employee_data['office_location']
+            employee_info['company'],
+            employee_info['department'], 
+            employee_info['office_location']
         ]
         y_tr = 120
         draw_multi_text(right_lines, 0, y_tr, box_type='secondary', align='right', line_spacing=5)
@@ -203,8 +212,8 @@ def generate_background(employee_data, base_background_path, output_path=None):
         
         # QR-коды и подписи
         qr_data = [
-            (f"mailto:{employee_data['contact']['email']}", "Email", 'primary'),
-            (f"https://t.me/{employee_data['contact']['telegram'].replace('@', '')}", "Telegram", 'secondary')
+            (f"mailto:{employee_info['contact']['email']}", "Email", 'primary'),
+            (f"https://t.me/{employee_info['contact']['telegram'].replace('@', '')}", "Telegram", 'secondary')
         ]
         
         for i, (data, label, box_type) in enumerate(qr_data):
@@ -226,7 +235,7 @@ def generate_background(employee_data, base_background_path, output_path=None):
             draw_text(label, label_x, y_br + qr_size + 30, font_type=small_font, box_type=box_type, v_pad=8)
 
     # Слоган в центре сверху
-    slogan = employee_data['branding']['slogan']
+    slogan = employee_info['branding']['slogan']
     draw_text(slogan, 0, 50, font_type=slogan_font, box_type='secondary', v_pad=12, align='center')
 
     # Сохранение
@@ -238,19 +247,47 @@ def generate_background(employee_data, base_background_path, output_path=None):
         base_img.save(buffered, format='PNG')
         return buffered.getvalue()
 
+# Новая функция для работы с JSON
+def generate_background_from_json(json_file_path, base_background_path, output_path=None):
+    """
+    Генерирует фон на основе данных из JSON файла
+    """
+    employee = Employee.from_json(json_file_path)
+    return generate_background(employee, base_background_path, output_path)
+
+# Новая функция для работы с вводом пользователя
+def generate_background_from_input(base_background_path, output_path=None):
+    """
+    Генерирует фон на основе ввода пользователя
+    """
+    employee = Employee.from_input()
+    return generate_background(employee, base_background_path, output_path)
+
 # Пример использования
 if __name__ == "__main__":
-    example_data = {
-        "full_name": "Иванов Сергей Петрович",
-        "position": "Ведущий инженер по компьютерному зрению с очень длинным названием должности",
-        "company": "ООО «Рога и Копыта»",
-        "department": "Департамент компьютерного зрения",
-        "office_location": "Новосибирск, технопарк «Идея»",
-        "contact": {
+    # Пример 1: Использование с JSON файлом
+    try:
+        output1 = generate_background_from_json("data.json", "./testData/Back/1920х1080_4.png", "generated_from_json.png")
+        print(f"Generated from JSON: {output1}")
+    except Exception as e:
+        print(f"Error loading from JSON: {e}")
+    
+    # Пример 2: Использование с вводом пользователя
+    # output2 = generate_background_from_input("./testData/Back/1920х1080_4.png", "generated_from_input.png")
+    # print(f"Generated from input: {output2}")
+    
+    # Пример 3: Использование напрямую с объектом Employee (для обратной совместимости)
+    example_employee = Employee(
+        full_name="Иванов Сергей Петрович",
+        position="Ведущий инженер по компьютерному зрению с очень длинным названием должности",
+        company="ООО «Рога и Копыта»",
+        department="Департамент компьютерного зрения",
+        office_location="Новосибирск, технопарк «Идея»",
+        contact={
             "email": "sergey.ivanov@t1dp.ru",
             "telegram": "@sergey_vision"
         },
-        "branding": {
+        branding={
             "logo_url": "./testData/logos/medium_9eb9cd58b9ea5e04c890326b5c1f471f.png",
             "corporate_colors": {
                 "primary": "#0052CC",
@@ -258,7 +295,8 @@ if __name__ == "__main__":
             },
             "slogan": "Инновации в каждый кадр"
         },
-        "privacy_level": "high"
-    }
-    output = generate_background(example_data, "./testData/Back/1920х1080_4.png", "generated_background.png")
-    print(f"Generated: {output}")
+        privacy_level="high"
+    )
+    
+    output3 = generate_background(example_employee, "./testData/Back/1920х1080_4.png", "generated_from_object.png")
+    print(f"Generated from Employee object: {output3}")
