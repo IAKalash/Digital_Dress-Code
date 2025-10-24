@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MediaPipe — Firefox (РАБОЧАЯ ВЕРСИЯ)</title>
+  <title>MediaPipe — Firefox (Оптимизированная для памяти и FPS)</title>
   <style>
     body { margin: 0; background: #000; font-family: Arial, sans-serif; text-align: center; color: white; }
     .container { position: relative; max-width: 640px; margin: 0 auto; }
@@ -16,21 +16,16 @@
   </style>
 </head>
 <body>
-  <h1>Firefox — СЕГМЕНТАЦИЯ (ИСПРАВЛЕННАЯ)</h1>
+  <h1>Firefox — Сегментация</h1>
   <div class="container">
     <div class="fps" id="fps">FPS: 0</div>
     <canvas id="output"></canvas>
     <canvas id="mask" style="display: none;"></canvas>
   </div>
-  <button id="start">ЗАПУСТИТЬ КАМЕРУ</button>
+  <button id="start">Запустить камеру</button>
   <div class="status" id="status">Нажмите кнопку для запуска</div>
-
-  <!-- Загружаем MediaPipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-
   <script>
     const outputCanvas = document.getElementById('output');
     const maskCanvas = document.getElementById('mask');
@@ -39,76 +34,58 @@
     const startButton = document.getElementById('start');
     const statusDiv = document.getElementById('status');
     const fpsDiv = document.getElementById('fps');
-
     let selfieSegmentation = null;
     let camera = null;
+    let videoElement = null;
     let animationId = null;
     let fps = 0;
     let lastTimestamp = 0;
     let frameCount = 0;
-
-    // Фон для демонстрации сегментации
     const backgroundColors = ['#113', '#300', '#030', '#330'];
     let currentBg = 0;
 
-    async function initializeSelfieSegmentation() {
-      statusDiv.textContent = 'Инициализация MediaPipe...';
-      
-      try {
-        selfieSegmentation = new SelfieSegmentation({
-          locateFile: (file) => {
-            console.log('Loading file:', file);
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
-          }
-        });
-
-        selfieSegmentation.setOptions({
-          modelSelection: 1, // 1 - общая модель, 0 - ландшафтная
-          selfieMode: true
-        });
-
-        selfieSegmentation.onResults(onResults);
-        
-        statusDiv.textContent = 'MediaPipe готов! Запускаем камеру...';
-        return true;
-      } catch (error) {
-        console.error('Ошибка инициализации MediaPipe:', error);
-        statusDiv.textContent = 'Ошибка MediaPipe: ' + error.message;
-        statusDiv.className = 'status error';
-        return false;
+    // Memory usage logging with context
+    function logMemoryUsage(context = 'General') {
+      if (performance.memory) {
+        const usedMB = Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+        const totalMB = Math.round(performance.memory.totalJSHeapSize / 1024 / 1024);
+        console.log(`[${context}] Memory: ${usedMB} MB / ${totalMB} MB`);
       }
     }
 
-    async function startCamera() {
-      statusDiv.textContent = 'Запрос доступа к камере...';
-      
+    async function initializeApp() {
+      startButton.disabled = true;
+      statusDiv.textContent = 'Инициализация MediaPipe...';
+      logMemoryUsage('Before MediaPipe Init');
+
       try {
+        // Initialize MediaPipe SelfieSegmentation
+        selfieSegmentation = new SelfieSegmentation({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+        });
+        selfieSegmentation.setOptions({ modelSelection: 1, selfieMode: true });
+        selfieSegmentation.onResults(onResults);
+        statusDiv.textContent = 'MediaPipe готов! Запускаем камеру...';
+        logMemoryUsage('After MediaPipe Init');
+
+        // Start camera
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 30 }
-          },
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
           audio: false
         });
-
-        const videoElement = document.createElement('video');
+        videoElement = document.createElement('video');
         videoElement.srcObject = stream;
         videoElement.playsInline = true;
-        
-        await new Promise((resolve) => {
-          videoElement.onloadedmetadata = () => {
-            videoElement.play().then(resolve);
-          };
-        });
+        await videoElement.play();
 
-        // Устанавливаем размеры canvas
+        // Set canvas dimensions
         outputCanvas.width = videoElement.videoWidth;
         outputCanvas.height = videoElement.videoHeight;
         maskCanvas.width = videoElement.videoWidth;
         maskCanvas.height = videoElement.videoHeight;
+        logMemoryUsage('After Canvas Setup');
 
-        // Запускаем камеру MediaPipe
+        // Start MediaPipe camera
         camera = new Camera(videoElement, {
           onFrame: async () => {
             if (selfieSegmentation) {
@@ -118,60 +95,39 @@
           width: videoElement.videoWidth,
           height: videoElement.videoHeight
         });
-
         await camera.start();
         statusDiv.textContent = 'Камера запущена! Сегментация активна.';
-        startButton.textContent = 'СМЕНИТЬ ФОН';
+        startButton.textContent = 'Сменить фон';
         startButton.disabled = false;
-        
-        // Запускаем подсчет FPS
         requestAnimationFrame(updateFPS);
-        
-        return true;
+        logMemoryUsage('After Camera Start');
       } catch (error) {
-        console.error('Ошибка камеры:', error);
-        statusDiv.textContent = 'Ошибка камеры: ' + error.message;
+        console.error('Ошибка:', error);
+        statusDiv.textContent = `Ошибка: ${error.message}`;
         statusDiv.className = 'status error';
-        return false;
+        startButton.disabled = false;
       }
     }
 
     function onResults(results) {
-      if (!results || !results.segmentationMask) {
-        console.warn('Нет результатов сегментации');
-        return;
-      }
+      if (!results?.segmentationMask) return;
 
-      const width = outputCanvas.width;
-      const height = outputCanvas.height;
-
-      // 1. Очищаем основной canvas
+      logMemoryUsage('Before Canvas Render');
+      const { width, height } = outputCanvas;
       ctx.clearRect(0, 0, width, height);
-
-      // 2. Рисуем новый фон
       ctx.fillStyle = backgroundColors[currentBg];
       ctx.fillRect(0, 0, width, height);
-
-      // 3. Рисуем маску на скрытый canvas (для обработки)
-      maskCanvas.width = width;
-      maskCanvas.height = height;
       maskCtx.drawImage(results.segmentationMask, 0, 0, width, height);
-
-      // 4. СГЛАЖИВАЕМ МАСКУ (убираем рваные края)
       maskCtx.globalCompositeOperation = 'copy';
-      maskCtx.filter = 'blur(4px)'; // Мягкое сглаживание краёв
+      maskCtx.filter = 'blur(4px)';
       maskCtx.drawImage(maskCanvas, 0, 0, width, height);
       maskCtx.filter = 'none';
-
-      // 5. Рисуем оригинальное изображение
       ctx.drawImage(results.image, 0, 0, width, height);
-
-      // 6. Применяем сглаженную маску
       ctx.globalCompositeOperation = 'destination-in';
       ctx.drawImage(maskCanvas, 0, 0, width, height);
       ctx.globalCompositeOperation = 'source-over';
-
       frameCount++;
+      logMemoryUsage('After Canvas Render');
     }
 
     function updateFPS(timestamp) {
@@ -180,6 +136,7 @@
         fpsDiv.textContent = `FPS: ${fps}`;
         frameCount = 0;
         lastTimestamp = timestamp;
+        logMemoryUsage('FPS Update');
       }
       animationId = requestAnimationFrame(updateFPS);
     }
@@ -188,24 +145,30 @@
       currentBg = (currentBg + 1) % backgroundColors.length;
     }
 
-    async function initializeApp() {
-      startButton.disabled = true;
-      
-      const mediapipeReady = await initializeSelfieSegmentation();
-      if (!mediapipeReady) {
-        startButton.disabled = false;
-        return;
+    function cleanup() {
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+        animationId = null;
       }
-      
-      const cameraReady = await startCamera();
-      if (!cameraReady) {
-        startButton.disabled = false;
-        return;
+      if (camera) {
+        camera.stop();
+        camera = null;
       }
+      if (videoElement?.srcObject) {
+        const stream = videoElement.srcObject;
+        stream.getTracks().forEach(track => track.stop());
+        videoElement.srcObject = null;
+        videoElement = null;
+      }
+      if (selfieSegmentation) {
+        selfieSegmentation.close();
+        selfieSegmentation = null;
+      }
+      logMemoryUsage('After Cleanup');
+      if (window.gc) window.gc(); // Encourage garbage collection
     }
 
-    // Обработчики событий
-    startButton.addEventListener('click', function() {
+    startButton.addEventListener('click', () => {
       if (camera) {
         changeBackground();
       } else {
@@ -213,20 +176,15 @@
       }
     });
 
-    // Чистка при закрытии страницы
-    window.addEventListener('beforeunload', () => {
-      if (camera) {
-        camera.stop();
-      }
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-    });
+    window.addEventListener('beforeunload', cleanup);
 
-    // Информация о браузере
-    console.log('Браузер:', navigator.userAgent);
-    console.log('MediaPipe SelfieSegmentation доступен:', typeof SelfieSegmentation !== 'undefined');
-    console.log('Camera доступен:', typeof Camera !== 'undefined');
+    // Periodic memory check and cleanup
+    setInterval(() => {
+      if (selfieSegmentation) {
+        selfieSegmentation.reset(); // Reset MediaPipe to clear buffers
+      }
+      logMemoryUsage('Periodic Check');
+    }, 30000);
   </script>
 </body>
 </html>
