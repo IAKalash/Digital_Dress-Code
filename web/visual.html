@@ -7,7 +7,7 @@
 <style>
   body {
     margin: 0;
-    background: #111;
+    background: #666;
     color: #fff;
     font-family: sans-serif;
     display: flex;
@@ -34,25 +34,6 @@
     object-fit: cover;
   }
 
-  #controls {
-    margin-top: 15px;
-    text-align: center;
-  }
-
-  input, select, button {
-    margin: 4px;
-    padding: 6px 8px;
-    border-radius: 5px;
-    border: none;
-    outline: none;
-  }
-
-  button {
-    background-color: #0052CC;
-    color: white;
-    cursor: pointer;
-  }
-
   #previewContainer {
     position: fixed;
     bottom: 20px;
@@ -62,19 +43,19 @@
     padding: 10px;
     border-radius: 10px;
     z-index: 1000;
-}
+  }
 
-#previewContainer h3 {
+  #previewContainer h3 {
     margin: 0 0 8px 0;
     font-size: 14px;
     text-align: center;
-}
+  }
 
-#previewContainer img {
+  #previewContainer img {
     max-width: 200px;
     border-radius: 5px;
     display: block;
-}
+  }
 
   /* Индикатор FPS */
   #fpsDisplay {
@@ -88,6 +69,262 @@
     font-size: 14px;
     color: #00ff88;
     box-shadow: 0 0 5px rgba(0,255,136,0.4);
+  }
+
+  /* Индикатор GPU */
+  #gpuDisplay {
+    position: fixed;
+    top: 50px; /* Под FPS */
+    left: 10px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 14px;
+    color: #ffaa00;
+    box-shadow: 0 0 5px rgba(255,170,0,0.4);
+  }
+
+  /* Левая панель фонов */
+  #backgroundPanel {
+    position: fixed;
+    left: 10px;
+    top: 100px;
+    width: 200px;
+    background: #333;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    z-index: 100;
+  }
+
+  #backgroundPanel h3 {
+    margin: 0 0 15px 0;
+    text-align: center;
+    color: #00B8D9;
+  }
+
+  .background-item {
+    margin-bottom: 15px;
+    text-align: center;
+    cursor: pointer;
+    padding: 10px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+  }
+
+  .background-item:hover {
+    background: #444;
+    transform: scale(1.05);
+  }
+
+  .background-item.active {
+    background: #0052CC;
+  }
+
+  .background-item img {
+    width: 100%;
+    border-radius: 5px;
+    margin-bottom: 5px;
+  }
+
+  .background-item span {
+    font-size: 14px;
+    display: block;
+  }
+
+  /* Пользовательский фон */
+  #customBackground {
+    margin: 10px 0;
+    padding: 8px;
+    background: #444;
+    border-radius: 6px;
+  }
+
+  #customBackground h4 {
+    margin: 0 0 6px 0;
+    font-size: 12px;
+    text-align: center;
+    color: #ccc;
+  }
+
+  #customBackground input {
+    width: 100%;
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    border: none;
+    background: #555;
+    color: white;
+    font-size: 12px;
+  }
+
+  #customBackground button {
+    width: 100%;
+    padding: 6px;
+    background: #007acc;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  #customBackground button:hover {
+    background: #0052CC;
+  }
+
+  /* Кнопка применения фона в панели */
+  #applyBtn, #applyColorBtn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    background-color: #0052CC;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+  }
+
+  #applyBtn:hover, #applyColorBtn:hover {
+      background: #1c438c;
+  }
+
+  /* Кнопка отображения данных */
+  #showDataBtn, #showDataColorBtn {
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    background-color: #666;
+    color: #999;
+    border: none;
+    border-radius: 5px;
+    cursor: not-allowed;
+    font-size: 16px;
+    opacity: 0.6;
+  }
+
+  #showDataBtn.enabled, #showDataColorBtn.enabled {
+    background-color: #0052CC;
+    color: white;
+    cursor: pointer;
+    opacity: 1;
+  }
+
+  #showDataBtn:hover, #showDataColorBtn:hover {
+    background: #1c438c;
+  }
+
+  /* Закладка для переключения панелей */
+#panelToggle {
+    position: fixed;
+    left: 240px;
+    top: 120px;
+    width: 40px;
+    height: 40px;
+    background: #333;
+    border-radius: 0 10px 10px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    z-index: 99;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.3);
+    transition: all 0.3s ease;
+}
+
+  #panelToggle:hover {
+    background: #444;
+    transform: scale(1.1);
+  }
+
+  /* Панель выбора цвета */
+  #colorPanel {
+    position: fixed;
+    left: 10px;
+    top: 100px;
+    width: 200px;
+    background: #333;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    z-index: 100;
+    display: none;
+  }
+
+  #colorPanel h3 {
+    margin: 0 0 15px 0;
+    text-align: center;
+    color: #00B8D9;
+  }
+
+  .color-palette {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 15px;
+  }
+
+  .color-item {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+
+  .color-item:hover {
+    transform: scale(1.1);
+    border-color: white;
+  }
+
+  .color-item.active {
+    border-color: #00ff88;
+    box-shadow: 0 0 10px rgba(0,255,136,0.5);
+  }
+
+  .color-custom {
+    grid-column: span 4;
+    margin-top: 10px;
+  }
+
+  .color-custom input {
+    width: 100%;
+    padding: 8px;
+    border-radius: 5px;
+    border: none;
+    background: #555;
+    color: white;
+    text-align: center;
+  }
+
+  /* Уведомление */
+  .notification {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 20px 30px;
+    border-radius: 10px;
+    z-index: 2000;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    display: none;
+  }
+
+  .notification button {
+    margin-top: 15px;
+    padding: 8px 16px;
+    background: #0052CC;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
   }
 
   /* Панель данных сотрудника */
@@ -131,10 +368,18 @@
     background: #00B8D9;
     color: black;
     border: none;
-    padding: 10px;
-    border-radius: 50%;
-    font-size: 18px;
+    padding: 12px 20px;
+    border-radius: 5px;
+    font-size: 16px;
     cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+
+  #employeeBtn:hover {
+      background: #0099C7;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(0, 184, 217, 0.3);
   }
 </style>
 </head>
@@ -144,17 +389,83 @@
 
   <!-- Поле FPS -->
   <div id="fpsDisplay">FPS: —</div>
+  
+  <!-- Поле GPU -->
+  <div id="gpuDisplay">GPU: —%</div>
 
-  <button id="employeeBtn">👤</button>
+  <button id="employeeBtn">Ввод данных сотрудника</button>
 
-  <div id="controls">
-    <label>Фон:</label>
-    <select id="backgroundSelect">
-      <option value="Подложки DION/1920х1080.png">Корпоративный фон 1</option>
-      <option value="Подложки DION/1920х1080_2.png">Корпоративный фон 2</option>
-    </select>
-    <button id="previewBtn">Предпросмотр</button>
-    <button id="applyBtn">Применить</button>
+  <!-- Уведомление о незагруженных данных -->
+  <div id="noDataNotification" class="notification">
+    <h3>Данные сотрудника еще не загружены</h3>
+    <p>Пожалуйста, заполните данные сотрудника в правой панели и нажмите "Сохранить"</p>
+    <button id="closeNotification">Закрыть</button>
+  </div>
+
+  <!-- Левая панель фонов -->
+  <div id="backgroundPanel">
+    <h3>Корпоративные фоны</h3>
+    <div class="background-item" data-background="Подложки DION/1920х1080.png">
+      <img src="Подложки DION/1920х1080.png" alt="Фон 1">
+      <span>Корпоративный фон 1</span>
+    </div>
+    <div class="background-item" data-background="Подложки DION/1920х1080_2.png">
+      <img src="Подложки DION/1920х1080_2.png" alt="Фон 2">
+      <span>Корпоративный фон 2</span>
+    </div>
+    
+    <!-- Пользовательский фон -->
+    <div id="customBackground">
+      <h4>Пользовательский фон</h4>
+      <input type="text" id="customBackgroundInput" placeholder="Введите ссылку на изображение">
+      <button id="loadCustomBackground">Загрузить фон</button>
+    </div>
+    
+    <!-- Кнопка применения фона -->
+    <button id="applyBtn">Применить фон</button>
+    <!-- Кнопка отображения данных -->
+    <button id="showDataBtn" disabled>Отобразить данные</button>
+  </div>
+
+  <!-- Закладка для переключения панелей -->
+  <div id="panelToggle">🎨</div>
+
+  <!-- Панель выбора цвета -->
+  <div id="colorPanel">
+    <h3>Цветной фон</h3>
+    
+    <div class="color-palette">
+      <!-- Основные цвета -->
+      <div class="color-item" style="background: #FF6B6B;" data-color="#FF6B6B"></div>
+      <div class="color-item" style="background: #4ECDC4;" data-color="#4ECDC4"></div>
+      <div class="color-item" style="background: #45B7D1;" data-color="#45B7D1"></div>
+      <div class="color-item" style="background: #96CEB4;" data-color="#96CEB4"></div>
+      
+      <div class="color-item" style="background: #FFEAA7;" data-color="#FFEAA7"></div>
+      <div class="color-item" style="background: #DDA0DD;" data-color="#DDA0DD"></div>
+      <div class="color-item" style="background: #98D8C8;" data-color="#98D8C8"></div>
+      <div class="color-item" style="background: #F7DC6F;" data-color="#F7DC6F"></div>
+      
+      <div class="color-item" style="background: #BB8FCE;" data-color="#BB8FCE"></div>
+      <div class="color-item" style="background: #85C1E9;" data-color="#85C1E9"></div>
+      <div class="color-item" style="background: #F8C471;" data-color="#F8C471"></div>
+      <div class="color-item" style="background: #82E0AA;" data-color="#82E0AA"></div>
+      
+      <div class="color-item" style="background: #F1948A;" data-color="#F1948A"></div>
+      <div class="color-item" style="background: #7FB3D5;" data-color="#7FB3D5"></div>
+      <div class="color-item" style="background: #76D7C4;" data-color="#76D7C4"></div>
+      <div class="color-item" style="background: #F9E79F;" data-color="#F9E79F"></div>
+      
+      <!-- Пользовательский цвет -->
+      <div class="color-custom">
+        <input type="color" id="customColorPicker" value="#0052CC">
+      </div>
+    </div>
+    
+    <!-- Кнопка применения цветного фона -->
+    <button id="applyColorBtn">Применить фон</button>
+    <!-- Кнопка отображения данных на цветном фоне -->
+    <button id="showDataColorBtn" disabled>Отобразить данные</button>
   </div>
 
   <div id="previewContainer">
@@ -181,6 +492,11 @@
     <label>Локация:</label><br><input id="office_location" placeholder="Новосибирск, технопарк"><br>
     <label>Email:</label><br><input id="email" placeholder="example@corp.ru"><br>
     <label>Telegram:</label><br><input id="telegram" placeholder="@username"><br>
+    
+    <!-- Поле для логотипа -->
+    <label>Логотип (ссылка):</label><br>
+    <input type="text" id="logo_url" placeholder="https://example.com/logo.png"><br>
+    
     <label>Слоган:</label><br><input id="slogan" placeholder="Инновации в каждый кадр"><br>
     <label>Уровень приватности:</label><br>
     <select id="privacy_level">
@@ -190,7 +506,7 @@
     </select><br><br>
     <button id="saveEmployee">Сохранить</button>
   </div>
-  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script> -->
+
   <script src="script.js"></script>
   <script src="background_generator.js" defer></script>
 </body>
