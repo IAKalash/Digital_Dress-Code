@@ -507,9 +507,12 @@
     <button id="saveEmployee">Сохранить</button>
   </div>
 
+  <script src="script.js"></script>
+  <script src="background_generator.js" defer></script>
+
   <script>
   // Функция для загрузки MediaPipe если не загружен автоматически
-  function loadMediaPipe() {
+    function loadMediaPipe() {
       if (typeof SelfieSegmentation === 'undefined') {
           console.log('MediaPipe не загружен, загружаем вручную...');
           const script1 = document.createElement('script');
@@ -531,12 +534,9 @@
           }, 1000);
       }
   }
-
   // Загружаем MediaPipe при загрузке страницы
   window.addEventListener('load', loadMediaPipe);
   </script>
-  <script src="background_generator.js" defer></script>
-  <script src="script.js"></script>
 
 </body>
 </html>
