@@ -1,545 +1,469 @@
-// === Класс сотрудника ===
-class Employee {
-    constructor() {
-        this.employee = {
-            full_name: '',
-            position: '',
-            company: '',
-            department: '',
-            office_location: '',
-            contact: { email: '', telegram: '' },
-            branding: { logo_url: '', corporate_colors: { primary: '#0052CC', secondary: '#00B8D9' }, slogan: '' },
-            privacy_level: 'medium'
-        };
-    }
-    setFullName(v) { this.employee.full_name = v; }
-    setPosition(v) { this.employee.position = v; }
-    setCompany(v) { this.employee.company = v; }
-    setDepartment(v) { this.employee.department = v; }
-    setOfficeLocation(v) { this.employee.office_location = v; }
-    setEmail(v) { this.employee.contact.email = v; }
-    setTelegram(v) { this.employee.contact.telegram = v; }
-    setLogoUrl(v) { this.employee.branding.logo_url = v; }
-    setSlogan(v) { this.employee.branding.slogan = v; }
-    setPrivacy(v) { this.employee.privacy_level = v; }
+// Добавляем в самое начало файла, перед всеми существующими функциями
+let selfieSegmentation = null;
+let camera = null;
+let isMediaPipeInitialized = false;
+let currentBackgroundImage = null;
+let currentBackgroundColor = null;
+const GITHUB_BASE_URL = 'https://raw.githubusercontent.com/IAKalash/Digital_Dress-Code/main/%D0%9F%D0%BE%D0%B4%D0%BB%D0%BE%D0%B6%D0%BA%D0%B8%20DION';
 
-    save_to_json() {
-        const data = JSON.stringify({ employee: this.employee }, null, 2);
-        localStorage.setItem('employee_data', data);
+// Функция загрузки фонов с GitHub
+async function loadBackgroundsFromGitHub() {
+    try {
+        console.log('Загрузка фонов с GitHub...');
         
-        const showDataBtn = document.getElementById('showDataBtn');
-        const showDataColorBtn = document.getElementById('showDataColorBtn');
-        showDataBtn.disabled = false;
-        showDataBtn.classList.add('enabled');
-        showDataColorBtn.disabled = false;
-        showDataColorBtn.classList.add('enabled');
+        const backgrounds = [
+            '1920х1080.png',
+            '1920х1080_2.png'
+        ];
+
+        const backgroundGrid = document.getElementById('backgroundGrid');
         
-        alert('Данные сохранены! Теперь вы можете отобразить их на фоне.');
+        for (const bgName of backgrounds) {
+            const bgUrl = `${GITHUB_BASE_URL}/${encodeURIComponent(bgName)}`;
+            
+            const bgItem = document.createElement('div');
+            bgItem.className = 'background-item';
+            bgItem.setAttribute('data-background', bgUrl);
+            
+            const img = document.createElement('img');
+            img.src = bgUrl;
+            img.alt = bgName;
+            img.crossOrigin = 'anonymous';
+            img.onerror = function() {
+                console.error('Ошибка загрузки фона:', bgUrl);
+                bgItem.style.display = 'none';
+            };
+            
+            bgItem.appendChild(img);
+            backgroundGrid.appendChild(bgItem);
+        }
+
+        // Переинициализируем обработчики для новых элементов
+        initBackgroundItemHandlers();
+        
+        console.log('Фоны с GitHub загружены');
+        
+    } catch (error) {
+        console.error('Ошибка загрузки фонов с GitHub:', error);
     }
 }
 
-// === Основной UI ===
-class DigitalDressCodeUI {
-    constructor() {
-        this.video = document.getElementById('camera');
-        this.canvas = document.getElementById('output');
-        this.ctx = this.canvas.getContext('2d');
+// Функция инициализации MediaPipe (интегрируем с существующим кодом)
+async function initMediaPipe() {
+    try {
+        console.log('Инициализация MediaPipe Selfie Segmentation...');
         
-        // MediaPipe элементы
-        this.selfieSegmentation = null;
-        this.maskCanvas = document.createElement('canvas');
-        this.maskCtx = this.maskCanvas.getContext('2d');
-        this.isSegmentationActive = false;
-        this.camera = null;
-        
-        this.employee = new Employee();
-        
-        // Для усреднения FPS и GPU
-        this.fpsValues = [];
-        this.gpuValues = [];
-        this.lastTime = performance.now();
-        this.frameCount = 0;
-        this.fps = 0;
-        this.gpuLoad = 0;
-        
-        // Флаг для отображения данных сотрудника
-        this.showEmployeeData = false;
-        
-        // Текущий выбранный фон
-        this.currentBackground = null;
-        this.backgroundImage = new Image();
-        
-        // Текущий выбранный цвет
-        this.selectedColor = null;
+        // Проверяем, что MediaPipe загружен
+        if (typeof SelfieSegmentation === 'undefined') {
+            console.log('MediaPipe не загружен, ожидаем...');
+            setTimeout(initMediaPipe, 1000);
+            return;
+        }
 
-        this.fpsDisplay = document.getElementById('fpsDisplay');
-        this.gpuDisplay = document.getElementById('gpuDisplay');
-
-        this.initCamera();
-        this.initMediaPipe();
-
-        // Инициализация левой панели фонов
-        this.initBackgroundPanel();
-        
-        // Инициализация панели цвета
-        this.initColorPanel();
-        
-        // Панель сотрудника
-        const panel = document.getElementById('employeePanel');
-        const btn = document.getElementById('employeeBtn');
-        const back = document.getElementById('backBtn');
-
-        btn.addEventListener('click', () => panel.classList.add('open'));
-        back.addEventListener('click', () => panel.classList.remove('open'));
-
-        document.getElementById('saveEmployee').addEventListener('click', () => {
-            this.collectEmployeeData();
-            this.employee.save_to_json();
-        });
-
-        // Кнопки отображения данных
-        document.getElementById('showDataBtn').addEventListener('click', () => {
-            if (!this.employee.employee.full_name || !this.employee.employee.position) {
-                document.getElementById('noDataNotification').style.display = 'block';
-                return;
+        // Создаем экземпляр сегментации
+        selfieSegmentation = new SelfieSegmentation({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
             }
-            this.showEmployeeData = true;
-            this.applyBackground();
         });
 
-        document.getElementById('showDataColorBtn').addEventListener('click', () => {
-            if (!this.employee.employee.full_name || !this.employee.employee.position) {
-                document.getElementById('noDataNotification').style.display = 'block';
-                return;
-            }
-            this.showEmployeeData = true;
-            this.applyColorBackground();
+        // Настройки - ВАЖНО: не используем 'effect'
+        // Настройки - ИСПРАВЛЕННАЯ ВЕРСИЯ
+        selfieSegmentation.setOptions({
+            modelSelection: 1,
+            selfieMode: true
         });
 
-        // Закрытие уведомления
-        document.getElementById('closeNotification').addEventListener('click', () => {
-            document.getElementById('noDataNotification').style.display = 'none';
-        });
+        // Подписываемся на результаты
+        selfieSegmentation.onResults(onSegmentationResults);
 
-        // Переключение панелей
-        document.getElementById('panelToggle').addEventListener('click', () => {
-            this.togglePanels();
-        });
-
-        // Загружаем сохранённые данные при инициализации
-        this.loadEmployeeData();
+        // Инициализация камеры
+        const videoElement = document.getElementById('camera');
+        const canvasElement = document.getElementById('output');
         
-        // Устанавливаем начальный фон
-        const firstBackground = document.querySelector('.background-item').getAttribute('data-background');
-        this.currentBackground = firstBackground;
+        // Убедимся, что canvas имеет правильные размеры
+        canvasElement.width = 640;
+        canvasElement.height = 480;
         
-        // Запускаем основной цикл
-        this.loop();
+        if (typeof Camera !== 'undefined') {
+            camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (selfieSegmentation && videoElement.videoWidth > 0) {
+                        try {
+                            await selfieSegmentation.send({image: videoElement});
+                        } catch (error) {
+                            console.error('Ошибка обработки кадра:', error);
+                        }
+                    }
+                },
+                width: 640,
+                height: 480
+            });
+
+            await camera.start();
+            console.log('MediaPipe и камера инициализированы успешно');
+            isMediaPipeInitialized = true;
+            
+            // Обновляем интерфейс
+            updateUIAfterMediaPipeInit();
+        } else {
+            console.error('Camera utils не загружены');
+        }
+
+    } catch (error) {
+        console.error('Ошибка инициализации MediaPipe:', error);
+        setTimeout(initMediaPipe, 2000);
     }
+}
 
-    async initCamera() {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    width: { ideal: 640 }, 
-                    height: { ideal: 480 }, 
-                    frameRate: { ideal: 30 } 
-                } 
-            });
-            this.video.srcObject = stream;
-            
-            await new Promise((resolve) => {
-                this.video.onloadedmetadata = () => resolve();
-            });
-            
-            this.canvas.width = this.video.videoWidth;
-            this.canvas.height = this.video.videoHeight;
-            this.maskCanvas.width = this.video.videoWidth;
-            this.maskCanvas.height = this.video.videoHeight;
-            
-        } catch (error) {
-            console.error('Ошибка инициализации камеры:', error);
-            alert('Не удалось получить доступ к камере. Проверьте разрешения.');
+function onSegmentationResults(results) {
+    const canvasElement = document.getElementById('output');
+    const ctx = canvasElement.getContext('2d');
+    
+    // ПОЛНОСТЬЮ очищаем canvas
+    ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+    
+    // 1. Сначала рисуем ЧЕЛОВЕКА
+    ctx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+    
+    // 2. Используем маску чтобы СОХРАНИТЬ только человека
+    if (results.segmentationMask) {
+        ctx.globalCompositeOperation = 'destination-in';
+        ctx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+    }
+    
+    // 3. Теперь рисуем ФОН ПОД человеком
+    ctx.globalCompositeOperation = 'destination-over';
+    if (currentBackgroundImage) {
+        ctx.drawImage(currentBackgroundImage, 0, 0, canvasElement.width, canvasElement.height);
+    } else if (currentBackgroundColor) {
+        ctx.fillStyle = currentBackgroundColor;
+        ctx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+    }
+    
+    // Восстанавливаем режим
+    ctx.globalCompositeOperation = 'source-over';
+}
+
+// Функция обновления UI после инициализации MediaPipe
+function updateUIAfterMediaPipeInit() {
+    console.log('MediaPipe готов к работе');
+    
+    // Активируем кнопки, которые могли быть заблокированы
+    const applyBtn = document.getElementById('applyBtn');
+    const showDataBtn = document.getElementById('showDataBtn');
+    const applyColorBtn = document.getElementById('applyColorBtn');
+    const showDataColorBtn = document.getElementById('showDataColorBtn');
+    
+    if (applyBtn) {
+        applyBtn.disabled = false;
+        applyBtn.style.cursor = 'pointer';
+        applyBtn.style.opacity = '1';
+    }
+    if (showDataBtn) {
+        showDataBtn.disabled = false;
+        showDataBtn.style.cursor = 'pointer';
+        showDataBtn.style.opacity = '1';
+    }
+    if (applyColorBtn) {
+        applyColorBtn.disabled = false;
+        applyColorBtn.style.cursor = 'pointer';
+        applyColorBtn.style.opacity = '1';
+    }
+    if (showDataColorBtn) {
+        showDataColorBtn.disabled = false;
+        showDataColorBtn.style.cursor = 'pointer';
+        showDataColorBtn.style.opacity = '1';
+    }
+}
+
+// Глобальные функции для применения фонов
+window.applyBackground = function(backgroundSrc) {
+    console.log('Применение фона:', backgroundSrc);
+    
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+        currentBackgroundImage = img;
+        currentBackgroundColor = null;
+        console.log('Фон загружен для сегментации');
+        
+        // Показываем превью
+        showPreview(backgroundSrc);
+        
+        // Принудительно обновляем отрисовку
+        if (selfieSegmentation) {
+            const videoElement = document.getElementById('camera');
+            if (videoElement.videoWidth > 0) {
+                selfieSegmentation.send({image: videoElement});
+            }
+        }
+    };
+    img.onerror = function() {
+        console.error('Ошибка загрузки фона:', backgroundSrc);
+        currentBackgroundImage = null;
+        alert('Ошибка загрузки фонового изображения');
+    };
+    img.src = backgroundSrc;
+};
+
+window.applyColorBackground = function(color) {
+    console.log('Применение цветного фона:', color);
+    
+    currentBackgroundColor = color;
+    currentBackgroundImage = null;
+    
+    // Показываем превью цвета
+    showColorPreview(color);
+    
+    // Принудительно обновляем отрисовку
+    if (selfieSegmentation) {
+        const videoElement = document.getElementById('camera');
+        if (videoElement.videoWidth > 0) {
+            selfieSegmentation.send({image: videoElement});
         }
     }
+};
 
-    async initMediaPipe() {
-        try {
-            if (typeof SelfieSegmentation === 'undefined') {
-                console.log('MediaPipe не загружен, ожидаем загрузки...');
-                setTimeout(() => this.initMediaPipe(), 100);
-                return;
-            }
-            
-            this.selfieSegmentation = new SelfieSegmentation({
-                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
-            });
-            
-            this.selfieSegmentation.setOptions({
-                modelSelection: 1,
-                selfieMode: true
-            });
-            
-            this.selfieSegmentation.onResults((results) => {
-                this.onSegmentationResults(results);
-            });
-            
-            console.log('MediaPipe инициализирован');
-            
-            // Запускаем камеру MediaPipe
-            this.startMediaPipeCamera();
-            
-        } catch (error) {
-            console.error('Ошибка инициализации MediaPipe:', error);
+// Функции для превью
+function showPreview(imageSrc) {
+    const previewContainer = document.getElementById('previewContainer');
+    const previewImage = document.getElementById('previewImage');
+    
+    previewImage.src = imageSrc;
+    previewContainer.style.display = 'block';
+}
+
+function showColorPreview(color) {
+    const previewContainer = document.getElementById('previewContainer');
+    const previewImage = document.getElementById('previewImage');
+    
+    // Создаем временный canvas для отображения цвета
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 200;
+    tempCanvas.height = 150;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.fillStyle = color;
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    
+    previewImage.src = tempCanvas.toDataURL();
+    previewContainer.style.display = 'block';
+}
+
+// Функция применения фона с данными сотрудника
+window.applyBackgroundWithData = async function(backgroundSrc) {
+    if (!window.employeeInstance) {
+        document.getElementById('noDataNotification').style.display = 'block';
+        return;
+    }
+    
+    try {
+        const backgroundWithData = await generateBackground(backgroundSrc, true);
+        if (backgroundWithData) {
+            window.applyBackground(backgroundWithData);
         }
+    } catch (error) {
+        console.error('Ошибка генерации фона с данными:', error);
     }
+};
 
-    async startMediaPipeCamera() {
-        if (!this.selfieSegmentation) return;
-        
-        this.camera = new Camera(this.video, {
-            onFrame: async () => {
-                if (this.selfieSegmentation) {
-                    await this.selfieSegmentation.send({ image: this.video });
-                }
-            },
-            width: this.video.videoWidth,
-            height: this.video.videoHeight
-        });
-        await this.camera.start();
+// Функция применения цветного фона с данными сотрудника
+window.applyColorBackgroundWithData = async function(color) {
+    if (!window.employeeInstance) {
+        document.getElementById('noDataNotification').style.display = 'block';
+        return;
     }
-
-    onSegmentationResults(results) {
-        if (!results?.segmentationMask) return;
-
-        const { width, height } = this.maskCanvas;
+    
+    try {
+        // Создаем временный canvas для цветного фона
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 1920;
+        tempCanvas.height = 1080;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.fillStyle = color;
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         
-        // Очищаем mask canvas
-        this.maskCtx.clearRect(0, 0, width, height);
-        
-        // Рисуем маску сегментации
-        this.maskCtx.drawImage(results.segmentationMask, 0, 0, width, height);
-        
-        // Применяем размытие для сглаживания краев
-        this.maskCtx.globalCompositeOperation = 'copy';
-        this.maskCtx.filter = 'blur(8px)';
-        this.maskCtx.drawImage(this.maskCanvas, 0, 0, width, height);
-        this.maskCtx.filter = 'none';
-        this.maskCtx.globalCompositeOperation = 'source-over';
+        const backgroundWithData = await generateBackground(tempCanvas.toDataURL(), true);
+        if (backgroundWithData) {
+            window.applyBackground(backgroundWithData);
+        }
+    } catch (error) {
+        console.error('Ошибка генерации цветного фона с данными:', error);
     }
+};
 
-    initBackgroundPanel() {
-        const backgroundItems = document.querySelectorAll('.background-item');
-        backgroundItems.forEach(item => {
-            item.addEventListener('click', () => {
-                const backgroundPath = item.getAttribute('data-background');
-                this.selectBackground(backgroundPath);
-                
-                backgroundItems.forEach(i => i.classList.remove('active'));
-                item.classList.add('active');
-                
-                this.selectedColor = null;
-                document.querySelectorAll('.color-item').forEach(color => color.classList.remove('active'));
-                
-                this.previewBackground(backgroundPath);
-            });
-        });
-
-        document.getElementById('applyBtn').addEventListener('click', () => {
-            this.showEmployeeData = false;
-            this.isSegmentationActive = true;
-            this.applyBackground();
-            document.getElementById('previewContainer').style.display = 'none';
-        });
-        
-        document.getElementById('loadCustomBackground').addEventListener('click', () => {
-            const customUrl = document.getElementById('customBackgroundInput').value;
-            if (customUrl) {
-                this.selectBackground(customUrl);
-                backgroundItems.forEach(i => i.classList.remove('active'));
-                
-                this.selectedColor = null;
-                document.querySelectorAll('.color-item').forEach(color => color.classList.remove('active'));
-                
-                this.previewBackground(customUrl);
-            } else {
-                alert('Пожалуйста, введите ссылку на изображение');
-            }
-        });
+// Функция для принудительной перезагрузки MediaPipe
+window.reloadMediaPipe = function() {
+    if (camera) {
+        camera.stop();
+        camera = null;
     }
-
-    initColorPanel() {
-        const colorItems = document.querySelectorAll('.color-item');
-        const colorPicker = document.getElementById('customColorPicker');
-        
-        colorItems.forEach(item => {
-            if (!item.classList.contains('color-custom')) {
-                item.addEventListener('click', () => {
-                    const color = item.getAttribute('data-color');
-                    this.selectColor(color);
-                    
-                    colorItems.forEach(i => i.classList.remove('active'));
-                    item.classList.add('active');
-                    
-                    this.currentBackground = null;
-                    document.querySelectorAll('.background-item').forEach(bg => bg.classList.remove('active'));
-                    
-                    this.previewColor(color);
-                });
-            }
-        });
-        
-        colorPicker.addEventListener('input', (e) => {
-            const color = e.target.value;
-            this.selectColor(color);
-            
-            colorItems.forEach(i => i.classList.remove('active'));
-            
-            this.currentBackground = null;
-            document.querySelectorAll('.background-item').forEach(bg => bg.classList.remove('active'));
-            
-            this.previewColor(color);
-        });
-
-        document.getElementById('applyColorBtn').addEventListener('click', () => {
-            this.showEmployeeData = false;
-            this.isSegmentationActive = true;
-            this.applyColorBackground();
-            document.getElementById('previewContainer').style.display = 'none';
-        });
+    if (selfieSegmentation) {
+        selfieSegmentation.close();
+        selfieSegmentation = null;
     }
+    isMediaPipeInitialized = false;
+    currentBackgroundImage = null;
+    currentBackgroundColor = null;
+    
+    setTimeout(initMediaPipe, 500);
+};
 
-    togglePanels() {
+// Инициализация обработчиков для фоновых элементов
+function initBackgroundItemHandlers() {
+    // Обработчики для фоновых изображений
+    document.querySelectorAll('.background-item').forEach(item => {
+        // Удаляем существующие обработчики чтобы избежать дублирования
+        item.replaceWith(item.cloneNode(true));
+    });
+
+    // Добавляем обработчики заново
+    document.querySelectorAll('.background-item').forEach(item => {
+        item.addEventListener('click', function() {
+            // Убираем активный класс у всех
+            document.querySelectorAll('.background-item').forEach(i => i.classList.remove('active'));
+            // Добавляем активный класс текущему
+            this.classList.add('active');
+        });
+    });
+}
+
+// Инициализация обработчиков кнопок
+function initButtonHandlers() {
+    initBackgroundItemHandlers();
+    
+    // Кнопка применения фона
+    document.getElementById('applyBtn').addEventListener('click', function() {
+        const activeBg = document.querySelector('.background-item.active');
+        if (activeBg) {
+            const backgroundSrc = activeBg.getAttribute('data-background');
+            window.applyBackground(backgroundSrc);
+        } else {
+            alert('Выберите фон из списка');
+        }
+    });
+    
+    // Кнопка отображения данных
+    document.getElementById('showDataBtn').addEventListener('click', function() {
+        const activeBg = document.querySelector('.background-item.active');
+        if (activeBg) {
+            const backgroundSrc = activeBg.getAttribute('data-background');
+            window.applyBackgroundWithData(backgroundSrc);
+        } else {
+            alert('Выберите фон из списка');
+        }
+    });
+    
+    // Пользовательский фон
+    document.getElementById('loadCustomBackground').addEventListener('click', function() {
+        const customUrl = document.getElementById('customBackgroundInput').value;
+        if (customUrl) {
+            window.applyBackground(customUrl);
+        } else {
+            alert('Введите ссылку на изображение');
+        }
+    });
+    
+    // Обработчики для цветов
+    document.querySelectorAll('.color-item').forEach(item => {
+        item.addEventListener('click', function() {
+            // Убираем активный класс у всех
+            document.querySelectorAll('.color-item').forEach(i => i.classList.remove('active'));
+            // Добавляем активный класс текущему
+            this.classList.add('active');
+        });
+    });
+    
+    // Кнопка применения цветного фона
+    document.getElementById('applyColorBtn').addEventListener('click', function() {
+        const activeColor = document.querySelector('.color-item.active');
+        if (activeColor) {
+            const color = activeColor.getAttribute('data-color');
+            window.applyColorBackground(color);
+        } else {
+            const customColor = document.getElementById('customColorPicker').value;
+            window.applyColorBackground(customColor);
+        }
+    });
+    
+    // Кнопка отображения данных на цветном фоне
+    document.getElementById('showDataColorBtn').addEventListener('click', function() {
+        const activeColor = document.querySelector('.color-item.active');
+        if (activeColor) {
+            const color = activeColor.getAttribute('data-color');
+            window.applyColorBackgroundWithData(color);
+        } else {
+            const customColor = document.getElementById('customColorPicker').value;
+            window.applyColorBackgroundWithData(customColor);
+        }
+    });
+    
+    // Переключение панелей
+    document.getElementById('panelToggle').addEventListener('click', function() {
         const backgroundPanel = document.getElementById('backgroundPanel');
         const colorPanel = document.getElementById('colorPanel');
-        const toggleBtn = document.getElementById('panelToggle');
         
         if (backgroundPanel.style.display !== 'none') {
             backgroundPanel.style.display = 'none';
             colorPanel.style.display = 'block';
-            toggleBtn.textContent = '🖼️';
+            this.textContent = '🖼️';
         } else {
-            colorPanel.style.display = 'none';
             backgroundPanel.style.display = 'block';
-            toggleBtn.textContent = '🎨';
+            colorPanel.style.display = 'none';
+            this.textContent = '🎨';
         }
-    }
-
-    selectBackground(path) {
-        this.currentBackground = path;
-    }
-
-    selectColor(color) {
-        this.selectedColor = color;
-    }
-
-    previewBackground(path) {
-        const img = document.getElementById('previewImage');
-        if (path && path.trim() !== '') {
-            img.src = path;
-            document.getElementById('previewContainer').style.display = 'block';
-        }
-    }
-
-    previewColor(color) {
-        const img = document.getElementById('previewImage');
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = 200;
-        tempCanvas.height = 150;
-        const tempCtx = tempCanvas.getContext('2d');
-        
-        tempCtx.fillStyle = color;
-        tempCtx.fillRect(0, 0, 200, 150);
-        
-        tempCtx.fillStyle = '#ffffff';
-        tempCtx.font = '14px Arial';
-        tempCtx.textAlign = 'center';
-        tempCtx.fillText(color, 100, 80);
-        
-        img.src = tempCanvas.toDataURL();
-        document.getElementById('previewContainer').style.display = 'block';
-    }
-
-    async applyBackground() {
-        if (!this.currentBackground) {
-            alert('Выберите фон из списка');
-            return;
-        }
-        
-        try {
-            const generatedUrl = await generateBackground(this.currentBackground, this.showEmployeeData);
-            if (generatedUrl) {
-                this.backgroundImage.src = generatedUrl;
-            } else {
-                console.error('Не удалось сгенерировать фон, применяю базовый');
-                this.backgroundImage.src = this.currentBackground;
-            }
-        } catch (err) {
-            console.error('Ошибка при генерации фона:', err);
-            this.backgroundImage.src = this.currentBackground;
-        }
-    }
-
-    async applyColorBackground() {
-        if (!this.selectedColor) {
-            alert('Выберите цвет из палитры');
-            return;
-        }
-        
-        try {
-            const colorCanvas = document.createElement('canvas');
-            colorCanvas.width = 1920;
-            colorCanvas.height = 1080;
-            const colorCtx = colorCanvas.getContext('2d');
-            
-            colorCtx.fillStyle = this.selectedColor;
-            colorCtx.fillRect(0, 0, 1920, 1080);
-            
-            const colorDataUrl = colorCanvas.toDataURL('image/png');
-            
-            if (this.showEmployeeData) {
-                const generatedUrl = await generateBackground(colorDataUrl, true);
-                if (generatedUrl) {
-                    this.backgroundImage.src = generatedUrl;
-                } else {
-                    this.backgroundImage.src = colorDataUrl;
-                }
-            } else {
-                this.backgroundImage.src = colorDataUrl;
-            }
-        } catch (err) {
-            console.error('Ошибка при применении цветного фона:', err);
-        }
-    }
-
-    collectEmployeeData() {
-        this.employee.setFullName(document.getElementById('full_name').value);
-        this.employee.setPosition(document.getElementById('position').value);
-        this.employee.setCompany(document.getElementById('company').value);
-        this.employee.setDepartment(document.getElementById('department').value);
-        this.employee.setOfficeLocation(document.getElementById('office_location').value);
-        this.employee.setEmail(document.getElementById('email').value);
-        this.employee.setTelegram(document.getElementById('telegram').value);
-        this.employee.setLogoUrl(document.getElementById('logo_url').value);
-        this.employee.setSlogan(document.getElementById('slogan').value);
-        this.employee.setPrivacy(document.getElementById('privacy_level').value);
-    }
-
-    loadEmployeeData() {
-        const saved = localStorage.getItem('employee_data');
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                const emp = data.employee;
-                
-                document.getElementById('full_name').value = emp.full_name || '';
-                document.getElementById('position').value = emp.position || '';
-                document.getElementById('company').value = emp.company || '';
-                document.getElementById('department').value = emp.department || '';
-                document.getElementById('office_location').value = emp.office_location || '';
-                document.getElementById('email').value = emp.contact?.email || '';
-                document.getElementById('telegram').value = emp.contact?.telegram || '';
-                document.getElementById('logo_url').value = emp.branding?.logo_url || '';
-                document.getElementById('slogan').value = emp.branding?.slogan || '';
-                document.getElementById('privacy_level').value = emp.privacy_level || 'medium';
-                
-                if (emp.full_name && emp.position) {
-                    const showDataBtn = document.getElementById('showDataBtn');
-                    const showDataColorBtn = document.getElementById('showDataColorBtn');
-                    showDataBtn.disabled = false;
-                    showDataBtn.classList.add('enabled');
-                    showDataColorBtn.disabled = false;
-                    showDataColorBtn.classList.add('enabled');
-                }
-            } catch (e) {
-                console.error('Ошибка загрузки данных:', e);
-            }
-        }
-    }
-
-    calculateGPULoad() {
-        const baseLoad = 20;
-        const fpsFactor = Math.max(0, (60 - this.fps) / 2);
-        const randomVariation = Math.random() * 10 - 5;
-        
-        return Math.min(100, Math.max(0, baseLoad + fpsFactor + randomVariation));
-    }
-
-    updateAverageValues(instantFps, instantGpu) {
-        const now = performance.now();
-        
-        this.fpsValues.push({ value: instantFps, time: now });
-        this.gpuValues.push({ value: instantGpu, time: now });
-        
-        const oneSecondAgo = now - 1000;
-        this.fpsValues = this.fpsValues.filter(item => item.time > oneSecondAgo);
-        this.gpuValues = this.gpuValues.filter(item => item.time > oneSecondAgo);
-        
-        if (this.fpsValues.length > 0) {
-            const fpsSum = this.fpsValues.reduce((sum, item) => sum + item.value, 0);
-            this.fps = fpsSum / this.fpsValues.length;
-        }
-        
-        if (this.gpuValues.length > 0) {
-            const gpuSum = this.gpuValues.reduce((sum, item) => sum + item.value, 0);
-            this.gpuLoad = gpuSum / this.gpuValues.length;
-        }
-    }
-
-    drawFrame() {
-        if (this.video.readyState < 2) return;
-
-        const { videoWidth: w, videoHeight: h } = this.video;
-        
-        if (this.canvas.width !== w || this.canvas.height !== h) {
-            this.canvas.width = w;
-            this.canvas.height = h;
-            this.maskCanvas.width = w;
-            this.maskCanvas.height = h;
-        }
-
-        const now = performance.now();
-        const deltaTime = now - this.lastTime;
-        const instantFps = 1000 / deltaTime;
-        const instantGpu = this.calculateGPULoad();
-        
-        this.lastTime = now;
-        this.frameCount++;
-
-        this.updateAverageValues(instantFps, instantGpu);
-
-        const ctx = this.ctx;
-        ctx.clearRect(0, 0, w, h);
-        
-        if (this.isSegmentationActive && this.selfieSegmentation) {
-            // Режим с сегментацией: рисуем выбранный фон и человека поверх него
-            if (this.backgroundImage.src) {
-                ctx.drawImage(this.backgroundImage, 0, 0, w, h);
-            }
-            
-            // Рисуем видео с применением маски сегментации
-            ctx.save();
-            ctx.drawImage(this.video, 0, 0, w, h);
-            ctx.globalCompositeOperation = 'destination-in';
-            ctx.drawImage(this.maskCanvas, 0, 0, w, h);
-            ctx.restore();
-        } else {
-            // Обычный режим без сегментации
-            if (this.backgroundImage.src) {
-                ctx.drawImage(this.backgroundImage, 0, 0, w, h);
-            }
-            ctx.drawImage(this.video, 0, 0, w, h);
-        }
-        
-        this.fpsDisplay.textContent = `FPS: ${this.fps.toFixed(1)}`;
-        this.gpuDisplay.textContent = `GPU: ${this.gpuLoad.toFixed(1)}%`;
-    }
-
-    loop() {
-        this.drawFrame();
-        requestAnimationFrame(() => this.loop());
-    }
+    });
+    
+    // Закрытие уведомления
+    document.getElementById('closeNotification').addEventListener('click', function() {
+        document.getElementById('noDataNotification').style.display = 'none';
+    });
 }
 
-const app = new DigitalDressCodeUI();
-window.employeeInstance = app.employee;
+// Глобальная функция для проверки статуса
+window.getMediaPipeStatus = function() {
+    return {
+        initialized: isMediaPipeInitialized,
+        segmentation: !!selfieSegmentation,
+        camera: !!camera,
+        hasBackground: !!(currentBackgroundImage || currentBackgroundColor),
+        videoReady: document.getElementById('camera').videoWidth > 0
+    };
+};
+
+// Добавляем глобальную функцию для принудительной перезагрузки фонов
+window.reloadGitHubBackgrounds = function() {
+    const backgroundGrid = document.getElementById('backgroundGrid');
+    // Очищаем только динамически добавленные фоны (сохраняем оригинальные если есть)
+    const dynamicItems = backgroundGrid.querySelectorAll('.background-item[data-background*="github"]');
+    dynamicItems.forEach(item => item.remove());
+    
+    loadBackgroundsFromGitHub();
+};
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM загружен, проверяем MediaPipe...');
+    
+    // Сначала загружаем фоны с GitHub
+    loadBackgroundsFromGitHub();
+    
+    // Затем инициализируем обработчики событий для кнопок
+    initButtonHandlers();
+    
+    // Ждем немного для загрузки всех скриптов
+    setTimeout(() => {
+        if (typeof SelfieSegmentation !== 'undefined' && typeof Camera !== 'undefined') {
+            console.log('MediaPipe обнаружен, инициализируем...');
+            initMediaPipe();
+        } else {
+            console.log('MediaPipe не обнаружен, запускаем загрузку...');
+            // Используем существующую функцию из HTML
+            if (typeof loadMediaPipe === 'function') {
+                loadMediaPipe();
+            }
+            // Пробуем инициализировать через 2 секунды
+            setTimeout(initMediaPipe, 2000);
+        }
+    }, 1000);
+});
