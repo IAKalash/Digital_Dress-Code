@@ -27,7 +27,6 @@ class Employee {
         const data = JSON.stringify({ employee: this.employee }, null, 2);
         localStorage.setItem('employee_data', data);
         
-        // Активируем кнопки "Отобразить данные" после сохранения
         const showDataBtn = document.getElementById('showDataBtn');
         const showDataColorBtn = document.getElementById('showDataColorBtn');
         showDataBtn.disabled = false;
@@ -40,13 +39,18 @@ class Employee {
 }
 
 // === Основной UI ===
-
 class DigitalDressCodeUI {
     constructor() {
         this.video = document.getElementById('camera');
         this.canvas = document.getElementById('output');
         this.ctx = this.canvas.getContext('2d');
-        this.background = new Image();
+        
+        // MediaPipe элементы
+        this.selfieSegmentation = null;
+        this.maskCanvas = document.createElement('canvas');
+        this.maskCtx = this.maskCanvas.getContext('2d');
+        this.isSegmentationActive = false;
+        this.camera = null;
         
         this.employee = new Employee();
         
@@ -63,6 +67,7 @@ class DigitalDressCodeUI {
         
         // Текущий выбранный фон
         this.currentBackground = null;
+        this.backgroundImage = new Image();
         
         // Текущий выбранный цвет
         this.selectedColor = null;
@@ -71,7 +76,7 @@ class DigitalDressCodeUI {
         this.gpuDisplay = document.getElementById('gpuDisplay');
 
         this.initCamera();
-        this.loop();
+        this.initMediaPipe();
 
         // Инициализация левой панели фонов
         this.initBackgroundPanel();
@@ -127,11 +132,100 @@ class DigitalDressCodeUI {
         // Устанавливаем начальный фон
         const firstBackground = document.querySelector('.background-item').getAttribute('data-background');
         this.currentBackground = firstBackground;
+        
+        // Запускаем основной цикл
+        this.loop();
     }
 
     async initCamera() {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        this.video.srcObject = stream;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { 
+                    width: { ideal: 640 }, 
+                    height: { ideal: 480 }, 
+                    frameRate: { ideal: 30 } 
+                } 
+            });
+            this.video.srcObject = stream;
+            
+            await new Promise((resolve) => {
+                this.video.onloadedmetadata = () => resolve();
+            });
+            
+            this.canvas.width = this.video.videoWidth;
+            this.canvas.height = this.video.videoHeight;
+            this.maskCanvas.width = this.video.videoWidth;
+            this.maskCanvas.height = this.video.videoHeight;
+            
+        } catch (error) {
+            console.error('Ошибка инициализации камеры:', error);
+            alert('Не удалось получить доступ к камере. Проверьте разрешения.');
+        }
+    }
+
+    async initMediaPipe() {
+        try {
+            if (typeof SelfieSegmentation === 'undefined') {
+                console.log('MediaPipe не загружен, ожидаем загрузки...');
+                setTimeout(() => this.initMediaPipe(), 100);
+                return;
+            }
+            
+            this.selfieSegmentation = new SelfieSegmentation({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+            });
+            
+            this.selfieSegmentation.setOptions({
+                modelSelection: 1,
+                selfieMode: true
+            });
+            
+            this.selfieSegmentation.onResults((results) => {
+                this.onSegmentationResults(results);
+            });
+            
+            console.log('MediaPipe инициализирован');
+            
+            // Запускаем камеру MediaPipe
+            this.startMediaPipeCamera();
+            
+        } catch (error) {
+            console.error('Ошибка инициализации MediaPipe:', error);
+        }
+    }
+
+    async startMediaPipeCamera() {
+        if (!this.selfieSegmentation) return;
+        
+        this.camera = new Camera(this.video, {
+            onFrame: async () => {
+                if (this.selfieSegmentation) {
+                    await this.selfieSegmentation.send({ image: this.video });
+                }
+            },
+            width: this.video.videoWidth,
+            height: this.video.videoHeight
+        });
+        await this.camera.start();
+    }
+
+    onSegmentationResults(results) {
+        if (!results?.segmentationMask) return;
+
+        const { width, height } = this.maskCanvas;
+        
+        // Очищаем mask canvas
+        this.maskCtx.clearRect(0, 0, width, height);
+        
+        // Рисуем маску сегментации
+        this.maskCtx.drawImage(results.segmentationMask, 0, 0, width, height);
+        
+        // Применяем размытие для сглаживания краев
+        this.maskCtx.globalCompositeOperation = 'copy';
+        this.maskCtx.filter = 'blur(8px)';
+        this.maskCtx.drawImage(this.maskCanvas, 0, 0, width, height);
+        this.maskCtx.filter = 'none';
+        this.maskCtx.globalCompositeOperation = 'source-over';
     }
 
     initBackgroundPanel() {
@@ -141,39 +235,32 @@ class DigitalDressCodeUI {
                 const backgroundPath = item.getAttribute('data-background');
                 this.selectBackground(backgroundPath);
                 
-                // Обновляем активный элемент
                 backgroundItems.forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
                 
-                // Сбрасываем выбранный цвет
                 this.selectedColor = null;
                 document.querySelectorAll('.color-item').forEach(color => color.classList.remove('active'));
                 
-                // ПОКАЗЫВАЕМ предпросмотр при клике на корпоративный фон
                 this.previewBackground(backgroundPath);
             });
         });
 
-        // Кнопка применения фона
         document.getElementById('applyBtn').addEventListener('click', () => {
             this.showEmployeeData = false;
+            this.isSegmentationActive = true;
             this.applyBackground();
             document.getElementById('previewContainer').style.display = 'none';
         });
         
-        // Пользовательский фон
         document.getElementById('loadCustomBackground').addEventListener('click', () => {
             const customUrl = document.getElementById('customBackgroundInput').value;
             if (customUrl) {
                 this.selectBackground(customUrl);
-                // Снимаем выделение с корпоративных фонов
                 backgroundItems.forEach(i => i.classList.remove('active'));
                 
-                // Сбрасываем выбранный цвет
                 this.selectedColor = null;
                 document.querySelectorAll('.color-item').forEach(color => color.classList.remove('active'));
                 
-                // ПОКАЗЫВАЕМ предпросмотр при загрузке пользовательского фона
                 this.previewBackground(customUrl);
             } else {
                 alert('Пожалуйста, введите ссылку на изображение');
@@ -185,46 +272,38 @@ class DigitalDressCodeUI {
         const colorItems = document.querySelectorAll('.color-item');
         const colorPicker = document.getElementById('customColorPicker');
         
-        // Выбор цвета из палитры
         colorItems.forEach(item => {
             if (!item.classList.contains('color-custom')) {
                 item.addEventListener('click', () => {
                     const color = item.getAttribute('data-color');
                     this.selectColor(color);
                     
-                    // Обновляем активный элемент
                     colorItems.forEach(i => i.classList.remove('active'));
                     item.classList.add('active');
                     
-                    // Сбрасываем выбранный фон
                     this.currentBackground = null;
                     document.querySelectorAll('.background-item').forEach(bg => bg.classList.remove('active'));
                     
-                    // Показываем предпросмотр цвета
                     this.previewColor(color);
                 });
             }
         });
         
-        // Пользовательский выбор цвета
         colorPicker.addEventListener('input', (e) => {
             const color = e.target.value;
             this.selectColor(color);
             
-            // Обновляем активный элемент
             colorItems.forEach(i => i.classList.remove('active'));
             
-            // Сбрасываем выбранный фон
             this.currentBackground = null;
             document.querySelectorAll('.background-item').forEach(bg => bg.classList.remove('active'));
             
-            // Показываем предпросмотр цвета
             this.previewColor(color);
         });
 
-        // Кнопка применения цветного фона
         document.getElementById('applyColorBtn').addEventListener('click', () => {
             this.showEmployeeData = false;
+            this.isSegmentationActive = true;
             this.applyColorBackground();
             document.getElementById('previewContainer').style.display = 'none';
         });
@@ -236,12 +315,10 @@ class DigitalDressCodeUI {
         const toggleBtn = document.getElementById('panelToggle');
         
         if (backgroundPanel.style.display !== 'none') {
-            // Переключаем на панель цвета
             backgroundPanel.style.display = 'none';
             colorPanel.style.display = 'block';
             toggleBtn.textContent = '🖼️';
         } else {
-            // Переключаем на панель фонов
             colorPanel.style.display = 'none';
             backgroundPanel.style.display = 'block';
             toggleBtn.textContent = '🎨';
@@ -266,17 +343,14 @@ class DigitalDressCodeUI {
 
     previewColor(color) {
         const img = document.getElementById('previewImage');
-        // Создаем временный canvas для предпросмотра цвета
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = 200;
         tempCanvas.height = 150;
         const tempCtx = tempCanvas.getContext('2d');
         
-        // Заполняем цветом
         tempCtx.fillStyle = color;
         tempCtx.fillRect(0, 0, 200, 150);
         
-        // Добавляем текст с названием цвета
         tempCtx.fillStyle = '#ffffff';
         tempCtx.font = '14px Arial';
         tempCtx.textAlign = 'center';
@@ -295,14 +369,14 @@ class DigitalDressCodeUI {
         try {
             const generatedUrl = await generateBackground(this.currentBackground, this.showEmployeeData);
             if (generatedUrl) {
-                this.background.src = generatedUrl;
+                this.backgroundImage.src = generatedUrl;
             } else {
                 console.error('Не удалось сгенерировать фон, применяю базовый');
-                this.background.src = this.currentBackground;
+                this.backgroundImage.src = this.currentBackground;
             }
         } catch (err) {
             console.error('Ошибка при генерации фона:', err);
-            this.background.src = this.currentBackground;
+            this.backgroundImage.src = this.currentBackground;
         }
     }
 
@@ -313,13 +387,11 @@ class DigitalDressCodeUI {
         }
         
         try {
-            // Для цветного фона создаем простой canvas с выбранным цветом
             const colorCanvas = document.createElement('canvas');
             colorCanvas.width = 1920;
             colorCanvas.height = 1080;
             const colorCtx = colorCanvas.getContext('2d');
             
-            // Заполняем цветом
             colorCtx.fillStyle = this.selectedColor;
             colorCtx.fillRect(0, 0, 1920, 1080);
             
@@ -328,12 +400,12 @@ class DigitalDressCodeUI {
             if (this.showEmployeeData) {
                 const generatedUrl = await generateBackground(colorDataUrl, true);
                 if (generatedUrl) {
-                    this.background.src = generatedUrl;
+                    this.backgroundImage.src = generatedUrl;
                 } else {
-                    this.background.src = colorDataUrl;
+                    this.backgroundImage.src = colorDataUrl;
                 }
             } else {
-                this.background.src = colorDataUrl;
+                this.backgroundImage.src = colorDataUrl;
             }
         } catch (err) {
             console.error('Ошибка при применении цветного фона:', err);
@@ -371,7 +443,6 @@ class DigitalDressCodeUI {
                 document.getElementById('slogan').value = emp.branding?.slogan || '';
                 document.getElementById('privacy_level').value = emp.privacy_level || 'medium';
                 
-                // Если данные уже сохранены, активируем кнопки
                 if (emp.full_name && emp.position) {
                     const showDataBtn = document.getElementById('showDataBtn');
                     const showDataColorBtn = document.getElementById('showDataColorBtn');
@@ -386,7 +457,6 @@ class DigitalDressCodeUI {
         }
     }
 
-    // Метод для расчета загруженности GPU (условный)
     calculateGPULoad() {
         const baseLoad = 20;
         const fpsFactor = Math.max(0, (60 - this.fps) / 2);
@@ -395,7 +465,6 @@ class DigitalDressCodeUI {
         return Math.min(100, Math.max(0, baseLoad + fpsFactor + randomVariation));
     }
 
-    // Метод для усреднения значений за секунду
     updateAverageValues(instantFps, instantGpu) {
         const now = performance.now();
         
@@ -421,8 +490,13 @@ class DigitalDressCodeUI {
         if (this.video.readyState < 2) return;
 
         const { videoWidth: w, videoHeight: h } = this.video;
-        this.canvas.width = w;
-        this.canvas.height = h;
+        
+        if (this.canvas.width !== w || this.canvas.height !== h) {
+            this.canvas.width = w;
+            this.canvas.height = h;
+            this.maskCanvas.width = w;
+            this.maskCanvas.height = h;
+        }
 
         const now = performance.now();
         const deltaTime = now - this.lastTime;
@@ -435,8 +509,27 @@ class DigitalDressCodeUI {
         this.updateAverageValues(instantFps, instantGpu);
 
         const ctx = this.ctx;
-        ctx.drawImage(this.background, 0, 0, w, h);
-        ctx.drawImage(this.video, 0, 0, w, h);
+        ctx.clearRect(0, 0, w, h);
+        
+        if (this.isSegmentationActive && this.selfieSegmentation) {
+            // Режим с сегментацией: рисуем выбранный фон и человека поверх него
+            if (this.backgroundImage.src) {
+                ctx.drawImage(this.backgroundImage, 0, 0, w, h);
+            }
+            
+            // Рисуем видео с применением маски сегментации
+            ctx.save();
+            ctx.drawImage(this.video, 0, 0, w, h);
+            ctx.globalCompositeOperation = 'destination-in';
+            ctx.drawImage(this.maskCanvas, 0, 0, w, h);
+            ctx.restore();
+        } else {
+            // Обычный режим без сегментации
+            if (this.backgroundImage.src) {
+                ctx.drawImage(this.backgroundImage, 0, 0, w, h);
+            }
+            ctx.drawImage(this.video, 0, 0, w, h);
+        }
         
         this.fpsDisplay.textContent = `FPS: ${this.fps.toFixed(1)}`;
         this.gpuDisplay.textContent = `GPU: ${this.gpuLoad.toFixed(1)}%`;

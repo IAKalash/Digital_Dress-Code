@@ -79,7 +79,7 @@ function createQRCode(data, size) {
 }
 
 // === ГЕНЕРАЦИЯ ИЗОБРАЖЕНИЯ ===
-async function generateBackground(baseBackgroundPath) {
+async function generateBackground(baseBackgroundPath, showEmployeeData = false) {
     const employee = window.employeeInstance;
     if (!employee) {
         console.error('window.employeeInstance не определён');
@@ -137,237 +137,240 @@ async function generateBackground(baseBackgroundPath) {
         }
     }
 
-    // Шрифты
-    const fontFamily = 'Arial';
-    ctx.font = `40px ${fontFamily}`;
+    // Отображаем данные сотрудника только если включен флаг и есть данные
+    if (showEmployeeData && info.full_name && info.position) {
+        // Шрифты
+        const fontFamily = 'Arial';
+        ctx.font = `40px ${fontFamily}`;
 
-    // Цвета
-    const primaryColor = info.branding.corporate_colors.primary;
-    const textColor = chooseTextColor(primaryColor);
-    const textColorRgb = hexToRgb(textColor);
-    const shadowColor = textColorRgb.r > 128 ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
-    const primaryHex = primaryColor.replace('#', '');
-    const secondaryHex = info.branding.corporate_colors.secondary.replace('#', '');
-    const boxColors = {
-        primary: `#${primaryHex}77`,
-        secondary: `#${secondaryHex}64`
-    };
+        // Цвета
+        const primaryColor = info.branding.corporate_colors.primary;
+        const textColor = chooseTextColor(primaryColor);
+        const textColorRgb = hexToRgb(textColor);
+        const shadowColor = textColorRgb.r > 128 ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.5)';
+        const primaryHex = primaryColor.replace('#', '');
+        const secondaryHex = info.branding.corporate_colors.secondary.replace('#', '');
+        const boxColors = {
+            primary: `#${primaryHex}77`,
+            secondary: `#${secondaryHex}64`
+        };
 
-    // Вспомогательные функции
-    function setFont(size) {
-        ctx.font = `${size}px ${fontFamily}`;
-    }
+        // Вспомогательные функции
+        function setFont(size) {
+            ctx.font = `${size}px ${fontFamily}`;
+        }
 
-    function getTextWidth(text, size = 40) {
-        setFont(size);
-        return ctx.measureText(text || '').width;
-    }
+        function getTextWidth(text, size = 40) {
+            setFont(size);
+            return ctx.measureText(text || '').width;
+        }
 
-    function splitText(text, maxWidth, fontSize = 40) {
-        if (!text) return [];
-        setFont(fontSize);
-        const words = text.split(' ');
-        const lines = [];
-        let current = [];
-        for (const word of words) {
-            const test = [...current, word].join(' ');
-            if (ctx.measureText(test).width <= maxWidth) {
-                current.push(word);
-            } else {
-                if (current.length) lines.push(current.join(' '));
-                current = [word];
+        function splitText(text, maxWidth, fontSize = 40) {
+            if (!text) return [];
+            setFont(fontSize);
+            const words = text.split(' ');
+            const lines = [];
+            let current = [];
+            for (const word of words) {
+                const test = [...current, word].join(' ');
+                if (ctx.measureText(test).width <= maxWidth) {
+                    current.push(word);
+                } else {
+                    if (current.length) lines.push(current.join(' '));
+                    current = [word];
+                }
+            }
+            if (current.length) lines.push(current.join(' '));
+            return lines;
+        }
+
+        function drawRoundedRect(x, y, w, h, r, fill) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+            if (fill) {
+                ctx.fillStyle = fill;
+                ctx.fill();
             }
         }
-        if (current.length) lines.push(current.join(' '));
-        return lines;
-    }
 
-    function drawRoundedRect(x, y, w, h, r, fill) {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-        if (fill) {
-            ctx.fillStyle = fill;
-            ctx.fill();
-        }
-    }
-
-    function drawTextWithBox(text, x, y, options = {}) {
-        const {
-            fontSize = 40,
-            boxType = 'primary',
-            align = 'left',
-            vPad = 12,
-            lineSpacing = 5,
-            measureOnly = false,
-            centerX
-        } = options;
-        setFont(fontSize);
-        const lines = Array.isArray(text) ? text : splitText(text, 500, fontSize);
-        if (lines.length === 0) return 0;
-        
-        const metrics = ctx.measureText('M');
-        const ascent = metrics.actualBoundingBoxAscent || fontSize * 0.7;
-        const descent = metrics.actualBoundingBoxDescent || fontSize * 0.3;
-        const lineHeight = ascent + descent;
-        
-        const totalTextHeight = lines.length * lineHeight + (lines.length - 1) * lineSpacing;
-        const totalHeight = totalTextHeight;
-        const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 1);
-        
-        let startX = x;
-        if (align === 'right') {
-            startX = WIDTH - maxWidth - 70;
-        } else if (align === 'center') {
-            if (centerX !== undefined) {
-                startX = centerX - maxWidth / 2;
-            } else {
-                startX = (WIDTH - maxWidth) / 2;
+        function drawTextWithBox(text, x, y, options = {}) {
+            const {
+                fontSize = 40,
+                boxType = 'primary',
+                align = 'left',
+                vPad = 12,
+                lineSpacing = 5,
+                measureOnly = false,
+                centerX
+            } = options;
+            setFont(fontSize);
+            const lines = Array.isArray(text) ? text : splitText(text, 500, fontSize);
+            if (lines.length === 0) return 0;
+            
+            const metrics = ctx.measureText('M');
+            const ascent = metrics.actualBoundingBoxAscent || fontSize * 0.7;
+            const descent = metrics.actualBoundingBoxDescent || fontSize * 0.3;
+            const lineHeight = ascent + descent;
+            
+            const totalTextHeight = lines.length * lineHeight + (lines.length - 1) * lineSpacing;
+            const totalHeight = totalTextHeight;
+            const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width), 1);
+            
+            let startX = x;
+            if (align === 'right') {
+                startX = WIDTH - maxWidth - 70;
+            } else if (align === 'center') {
+                if (centerX !== undefined) {
+                    startX = centerX - maxWidth / 2;
+                } else {
+                    startX = (WIDTH - maxWidth) / 2;
+                }
             }
-        }
-        
-        const boxLeft = startX - 10;
-        const boxRight = startX + maxWidth + 10;
-        const boxTop = y;
-        const boxBottom = y + totalHeight + 2 * vPad;
-        
-        if (measureOnly) {
+            
+            const boxLeft = startX - 10;
+            const boxRight = startX + maxWidth + 10;
+            const boxTop = y;
+            const boxBottom = y + totalHeight + 2 * vPad;
+            
+            if (measureOnly) {
+                return totalHeight + 2 * vPad;
+            }
+            
+            drawRoundedRect(boxLeft, boxTop, boxRight - boxLeft, boxBottom - boxTop, 15, boxColors[boxType]);
+            
+            let currentY = y + (totalHeight + 2 * vPad - totalTextHeight) / 2 + ascent;
+            lines.forEach((line, i) => {
+                const lineWidth = ctx.measureText(line).width;
+                let lineX = startX;
+                if (align === 'right') {
+                    lineX = startX + (maxWidth - lineWidth);
+                } else if (align === 'center') {
+                    lineX = startX + (maxWidth - lineWidth) / 2;
+                }
+                ctx.fillStyle = shadowColor;
+                ctx.fillText(line, lineX + 2, currentY + 2);
+                ctx.fillStyle = textColor;
+                ctx.fillText(line, lineX, currentY);
+                if (i < lines.length - 1) {
+                    currentY += lineHeight + lineSpacing;
+                }
+            });
             return totalHeight + 2 * vPad;
         }
-        
-        drawRoundedRect(boxLeft, boxTop, boxRight - boxLeft, boxBottom - boxTop, 15, boxColors[boxType]);
-        
-        let currentY = y + (totalHeight + 2 * vPad - totalTextHeight) / 2 + ascent;
-        lines.forEach((line, i) => {
-            const lineWidth = ctx.measureText(line).width;
-            let lineX = startX;
-            if (align === 'right') {
-                lineX = startX + (maxWidth - lineWidth);
-            } else if (align === 'center') {
-                lineX = startX + (maxWidth - lineWidth) / 2;
-            }
-            ctx.fillStyle = shadowColor;
-            ctx.fillText(line, lineX + 2, currentY + 2);
-            ctx.fillStyle = textColor;
-            ctx.fillText(line, lineX, currentY);
-            if (i < lines.length - 1) {
-                currentY += lineHeight + lineSpacing;
-            }
-        });
-        return totalHeight + 2 * vPad;
-    }
 
-    // === ОСНОВНАЯ ЛОГИКА РАСПОЛОЖЕНИЯ ===
-    const positionLines = splitText(info.position, 500, 40);
-    const nameLines = splitText(info.full_name, 500, 40);
-    let currentLeftY = HEIGHT - 200;
-    
-    if (positionLines.length > 0) {
-        const positionHeight = drawTextWithBox(positionLines, 50, currentLeftY, {
-            boxType: 'secondary',
-            vPad: 12,
-            lineSpacing: 5,
-            measureOnly: true
-        });
-        const positionStartY = currentLeftY - positionHeight;
-        drawTextWithBox(positionLines, 50, positionStartY, {
-            boxType: 'secondary',
-            vPad: 12,
-            lineSpacing: 5
-        });
-        currentLeftY = positionStartY - 10;
-    }
-    
-    if (nameLines.length > 0) {
-        const nameHeight = drawTextWithBox(nameLines, 50, currentLeftY, {
-            boxType: 'primary',
-            vPad: 12,
-            lineSpacing: 5,
-            measureOnly: true
-        });
-        const nameStartY = currentLeftY - nameHeight;
-        drawTextWithBox(nameLines, 50, nameStartY, {
-            boxType: 'primary',
-            vPad: 12,
-            lineSpacing: 5
-        });
-    }
-
-    if (['medium', 'high'].includes(info.privacy_level)) {
-        const rightLines = [info.company, info.department, info.office_location].filter(Boolean);
-        if (rightLines.length > 0) {
-            drawTextWithBox(rightLines, 0, 120, {
+        // === ОСНОВНАЯ ЛОГИКА РАСПОЛОЖЕНИЯ ===
+        const positionLines = splitText(info.position, 500, 40);
+        const nameLines = splitText(info.full_name, 500, 40);
+        let currentLeftY = HEIGHT - 200;
+        
+        if (positionLines.length > 0) {
+            const positionHeight = drawTextWithBox(positionLines, 50, currentLeftY, {
                 boxType: 'secondary',
-                align: 'right',
+                vPad: 12,
+                lineSpacing: 5,
+                measureOnly: true
+            });
+            const positionStartY = currentLeftY - positionHeight;
+            drawTextWithBox(positionLines, 50, positionStartY, {
+                boxType: 'secondary',
+                vPad: 12,
+                lineSpacing: 5
+            });
+            currentLeftY = positionStartY - 10;
+        }
+        
+        if (nameLines.length > 0) {
+            const nameHeight = drawTextWithBox(nameLines, 50, currentLeftY, {
+                boxType: 'primary',
+                vPad: 12,
+                lineSpacing: 5,
+                measureOnly: true
+            });
+            const nameStartY = currentLeftY - nameHeight;
+            drawTextWithBox(nameLines, 50, nameStartY, {
+                boxType: 'primary',
                 vPad: 12,
                 lineSpacing: 5
             });
         }
-    }
 
-    // High: контакты (QR)
-    if (info.privacy_level === 'high') {
-        const qrSize = 128;
-        const qrPadding = 20;
-        const totalQrWidth = qrSize * 2 + qrPadding;
-        const startX = WIDTH - totalQrWidth - 100;
-        const yBr = HEIGHT - 220;
-        
-        const contactText = "Контакты";
-        setFont(40);
-        const contactWidth = ctx.measureText(contactText).width;
-        const contactCenterX = startX + totalQrWidth / 2;
-        drawTextWithBox(contactText, 0, yBr - 50, { 
-            align: 'center', 
-            vPad: 12,
-            centerX: contactCenterX
-        });
-        
-        const qrData = [];
-        if (info.contact.email) qrData.push([`mailto:${info.contact.email}`, "Email", 'primary']);
-        if (info.contact.telegram) qrData.push([`https://t.me/${info.contact.telegram.replace('@', '')}`, "Telegram", 'secondary']);
-        
-        // Генерируем все QR-коды асинхронно
-        const qrPromises = qrData.map(([data]) => createQRCode(data, qrSize));
-        const qrCanvases = await Promise.all(qrPromises);
-        
-        for (let i = 0; i < qrData.length; i++) {
-            const [data, label, boxType] = qrData[i];
-            const xPos = startX + i * (qrSize + qrPadding);
+        if (['medium', 'high'].includes(info.privacy_level)) {
+            const rightLines = [info.company, info.department, info.office_location].filter(Boolean);
+            if (rightLines.length > 0) {
+                drawTextWithBox(rightLines, 0, 120, {
+                    boxType: 'secondary',
+                    align: 'right',
+                    vPad: 12,
+                    lineSpacing: 5
+                });
+            }
+        }
+
+        // High: контакты (QR)
+        if (info.privacy_level === 'high') {
+            const qrSize = 128;
+            const qrPadding = 20;
+            const totalQrWidth = qrSize * 2 + qrPadding;
+            const startX = WIDTH - totalQrWidth - 100;
+            const yBr = HEIGHT - 220;
             
-            drawRoundedRect(xPos, yBr, qrSize + 20, qrSize + 20, 15, boxColors[boxType]);
+            const contactText = "Контакты";
+            setFont(40);
+            const contactWidth = ctx.measureText(contactText).width;
+            const contactCenterX = startX + totalQrWidth / 2;
+            drawTextWithBox(contactText, 0, yBr - 50, { 
+                align: 'center', 
+                vPad: 12,
+                centerX: contactCenterX
+            });
             
-            // Используем уже готовый QR-код
-            ctx.drawImage(qrCanvases[i], xPos + 10, yBr + 10);
+            const qrData = [];
+            if (info.contact.email) qrData.push([`mailto:${info.contact.email}`, "Email", 'primary']);
+            if (info.contact.telegram) qrData.push([`https://t.me/${info.contact.telegram.replace('@', '')}`, "Telegram", 'secondary']);
             
-            setFont(25);
-            const labelWidth = ctx.measureText(label).width;
-            const labelCenterX = xPos + (qrSize + 20) / 2;
-            drawTextWithBox(label, 0, yBr + qrSize + 30, {
-                fontSize: 25,
-                boxType,
+            // Генерируем все QR-коды асинхронно
+            const qrPromises = qrData.map(([data]) => createQRCode(data, qrSize));
+            const qrCanvases = await Promise.all(qrPromises);
+            
+            for (let i = 0; i < qrData.length; i++) {
+                const [data, label, boxType] = qrData[i];
+                const xPos = startX + i * (qrSize + qrPadding);
+                
+                drawRoundedRect(xPos, yBr, qrSize + 20, qrSize + 20, 15, boxColors[boxType]);
+                
+                // Используем уже готовый QR-код
+                ctx.drawImage(qrCanvases[i], xPos + 10, yBr + 10);
+                
+                setFont(25);
+                const labelWidth = ctx.measureText(label).width;
+                const labelCenterX = xPos + (qrSize + 20) / 2;
+                drawTextWithBox(label, 0, yBr + qrSize + 30, {
+                    fontSize: 25,
+                    boxType,
+                    align: 'center',
+                    vPad: 8,
+                    centerX: labelCenterX
+                });
+            }
+        }
+
+        if (info.branding.slogan) {
+            drawTextWithBox(info.branding.slogan, 0, 50, {
+                fontSize: 30,
+                boxType: 'secondary',
                 align: 'center',
-                vPad: 8,
-                centerX: labelCenterX
+                vPad: 12
             });
         }
-    }
-
-    if (info.branding.slogan) {
-        drawTextWithBox(info.branding.slogan, 0, 50, {
-            fontSize: 30,
-            boxType: 'secondary',
-            align: 'center',
-            vPad: 12
-        });
     }
 
     return canvas.toDataURL('image/png');
